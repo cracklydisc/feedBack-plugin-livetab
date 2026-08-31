@@ -2508,19 +2508,30 @@
             ? fb.ui.playerControlSlot() : null;
     }
 
+    /**
+     * The board list as a menu, not a stack of buttons.
+     *
+     * It used to be one button per board, which was fine with three and became
+     * the tallest thing in the panel once installs started carrying nine: the
+     * panel outgrew the space above the pill, grew upward off the top of the
+     * screen, and took the preset row with it. A menu is one row whatever the
+     * user has installed.
+     */
     function rebuildBoardButtons() {
         if (!controlPanel) return;
-        const holder = controlPanel.querySelector('[data-boards]');
-        if (!holder) return;
-        holder.textContent = '';
-        for (const id of Object.keys(BOARDS)) {
-            const b = document.createElement('button');
-            b.type = 'button';
-            b.setAttribute('data-board', id);
-            b.textContent = BOARDS[id].label;
-            b.style.cssText = BTN_CSS;
-            b.addEventListener('click', () => { api.set({ board: id }); });
-            holder.appendChild(b);
+        const sel = controlPanel.querySelector('[data-board-select]');
+        if (!sel) return;
+        const ids = Object.keys(BOARDS);
+        const same = sel.options.length === ids.length
+            && ids.every((id, i) => sel.options[i].value === id);
+        if (!same) {
+            sel.textContent = '';
+            for (const id of ids) {
+                const o = document.createElement('option');
+                o.value = id;
+                o.textContent = BOARDS[id].label;
+                sel.appendChild(o);
+            }
         }
         syncControl();
     }
@@ -2545,9 +2556,8 @@
             el.style.borderColor = on
                 ? 'rgba(56,189,248,0.6)' : 'rgba(148,163,184,0.35)';
         }
-        for (const el of controlPanel.querySelectorAll('[data-board]')) {
-            mark(el, el.getAttribute('data-board') === S.board);
-        }
+        const boardSel = controlPanel.querySelector('[data-board-select]');
+        if (boardSel && boardSel.options.length) boardSel.value = S.board;
         for (const el of controlPanel.querySelectorAll('[data-mode]')) {
             mark(el, el.getAttribute('data-mode') === S.readMode);
         }
@@ -2657,14 +2667,27 @@
         pill.appendChild(controlLabel);
         controlWrap.appendChild(pill);
 
+        // Parked in the corner of the window, the way the 3D Highway parks its
+        // own settings pane — same place, same size, so the two feel like one
+        // app rather than two plugins.
+        //
+        // It was anchored to its pill at first, which is where the trouble was:
+        // the player's <main> scrolls and therefore clips, so a panel grown
+        // upward from a pill low on the screen was cut at that element's edge;
+        // and once it fitted, changing a setting that adds a row moved the
+        // whole thing, because a panel pinned by its bottom edge can only grow
+        // upward. Parked in the corner it is clipped by nothing, moves for
+        // nothing, and needs no code to follow anything about.
         controlPanel = document.createElement('div');
         controlPanel.style.cssText = [
-            'position:absolute', 'bottom:calc(100% + 8px)', 'left:0',
-            'min-width:236px', 'padding:10px', 'border-radius:10px',
-            // It has to fit the window it pops up in, whatever the window.
-            'max-height:calc(100vh - 130px)', 'overflow-y:auto',
+            'position:fixed', 'top:64px', 'right:12px', 'width:248px',
+            'max-height:74vh', 'overflow-y:auto', 'overscroll-behavior:contain',
+            'scrollbar-width:thin', 'padding:10px', 'border-radius:10px',
             'background:rgba(9,13,22,0.97)', 'border:1px solid rgba(148,163,184,0.28)',
-            'box-shadow:0 10px 30px rgba(0,0,0,0.5)', 'display:none', 'z-index:40',
+            'box-shadow:0 10px 30px rgba(0,0,0,0.5)', 'display:none',
+            // Above the player (z-100 against the body) and below the app's own
+            // overlays: the tour popover sits at 201 and the tuner at 1001.
+            'z-index:150',
             'font:500 11px Inter,system-ui,sans-serif', 'color:#cbd5e1',
         ].join(';');
 
@@ -2679,12 +2702,23 @@
         const showTxt = document.createElement('span');
         showTxt.textContent = 'Show the tab';
         showRow.appendChild(showTxt);
-        controlPanel.appendChild(showRow);
 
         // Presets first, and here rather than only in the settings screen:
         // "give me the reading layout" is a decision taken mid-song, and
         // walking out to Graphics settings to take it means stopping playing.
-        controlPanel.appendChild(controlHeading('PRESET'));
+        // Pinned: whatever else the panel grows, these stay reachable. The
+        // presets are the way back out of any state, so losing them off the top
+        // of a scrolled panel leaves someone stuck in a layout they did not
+        // want — and the show/hide switch belongs with them rather than above
+        // them, where the pinned header would slide over it.
+        const presetBox = document.createElement('div');
+        presetBox.style.cssText = [
+            'position:sticky', 'top:-10px', 'z-index:2',
+            'background:rgba(9,13,22,0.97)', 'padding:10px 0 6px', 'margin:-10px 0 0',
+        ].join(';');
+        presetBox.appendChild(showRow);
+        presetBox.appendChild(controlHeading('PRESET'));
+        controlPanel.appendChild(presetBox);
         const presetRow = document.createElement('div');
         presetRow.style.cssText = 'display:flex;flex-wrap:wrap;gap:4px';
         for (const preset of PRESETS) {
@@ -2697,7 +2731,7 @@
             b.addEventListener('click', () => { api.applyPreset(preset.id); });
             presetRow.appendChild(b);
         }
-        controlPanel.appendChild(presetRow);
+        presetBox.appendChild(presetRow);
 
         controlPanel.appendChild(controlHeading('HOW IT MOVES'));
         for (const opt of [['scroll', 'Scrolling'], ['page', 'Page turns']]) {
@@ -2730,22 +2764,41 @@
         ]));
 
         controlPanel.appendChild(controlHeading('BOARD ABOVE', 'board'));
-        const boards = document.createElement('div');
-        boards.setAttribute('data-boards', '1');
+        const boards = document.createElement('select');
+        boards.setAttribute('data-board-select', '1');
         boards.setAttribute('data-row', 'board');
+        boards.style.cssText = [
+            'width:100%', 'padding:4px 6px', 'border-radius:6px',
+            'background:#0f172a', 'color:#e2e8f0',
+            'border:1px solid rgba(148,163,184,0.35)',
+            'font:600 11px Inter,system-ui,sans-serif', 'cursor:pointer',
+        ].join(';');
+        boards.addEventListener('change', () => { api.set({ board: boards.value }); });
         controlPanel.appendChild(boards);
 
         controlPanel.appendChild(controlSlider('heightPct', 'Tab height', '%'));
 
-        controlWrap.appendChild(controlPanel);
+        // Clicking a control focuses it, and the browser then scrolls the
+        // panel to keep the focused thing in view — which is what pushed the
+        // presets out of sight the moment someone changed a setting.
+        controlPanel.addEventListener('mousedown', (ev) => {
+            const t = ev.target;
+            if (t && (t.tagName === 'BUTTON' || t.tagName === 'INPUT')) ev.preventDefault();
+        });
+
+        document.body.appendChild(controlPanel);
+
+        const closePanel = () => { controlPanel.style.display = 'none'; };
+
         pill.addEventListener('click', (ev) => {
             ev.stopPropagation();
             const open = controlPanel.style.display !== 'none';
             controlPanel.style.display = open ? 'none' : 'block';
+            if (!open) controlPanel.scrollTop = 0;
         });
         document.addEventListener('click', (ev) => {
-            if (controlWrap && !controlWrap.contains(ev.target)) {
-                controlPanel.style.display = 'none';
+            if (!controlWrap.contains(ev.target) && !controlPanel.contains(ev.target)) {
+                closePanel();
             }
         });
 

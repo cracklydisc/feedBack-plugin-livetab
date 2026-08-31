@@ -1,7 +1,7 @@
 {
   "id": "livetab",
   "name": "Live Tab",
-  "version": "0.26.1",
+  "version": "0.26.2",
   "script": "screen.js",
   "category": "practice",
   "description": "Scrolling tablature with live hit/miss feedback. Hosts a note board above the tab so neither covers the other, or shows the tab alone.",
