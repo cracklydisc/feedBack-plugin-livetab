@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" role="img" aria-label="Live Tab">
+  <rect width="64" height="64" rx="10" fill="#0b0f18"/>
+  <g stroke-linecap="round">
+    <line x1="6" y1="16" x2="58" y2="16" stroke="#ff5552" stroke-opacity="0.35" stroke-width="1.5"/>
+    <line x1="6" y1="24" x2="58" y2="24" stroke="#fff352" stroke-opacity="0.35" stroke-width="1.5"/>
+    <line x1="6" y1="32" x2="58" y2="32" stroke="#31caff" stroke-opacity="0.35" stroke-width="1.5"/>
+    <line x1="6" y1="40" x2="58" y2="40" stroke="#ffae31" stroke-opacity="0.35" stroke-width="1.5"/>
+    <line x1="6" y1="48" x2="58" y2="48" stroke="#84ff42" stroke-opacity="0.35" stroke-width="1.5"/>
+  </g>
+  <line x1="22" y1="9" x2="22" y2="55" stroke="#ffffff" stroke-opacity="0.9" stroke-width="2"/>
+  <g font-family="ui-monospace, monospace" font-size="9" font-weight="700" text-anchor="middle">
+    <text x="22" y="27" fill="#4ade80">5</text>
+    <text x="34" y="35" fill="#31caff">7</text>
+    <text x="46" y="19" fill="#ff5552">3</text>
+    <text x="46" y="51" fill="#84ff42">0</text>
+  </g>
+</svg>

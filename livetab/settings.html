@@ -1,0 +1,41 @@
+<!--
+  Live Tab settings.
+
+  Deliberately almost empty: the panel is generated from the plugin's settings
+  schema (`livetab.mountSettings`), so every option is declared once, in
+  screen.js, and this file cannot fall out of step with it.
+-->
+<div id="livetab-settings" class="p-4 text-sm text-slate-400">
+  Loading Live Tab settings…
+</div>
+
+<script>
+(function () {
+    const root = document.getElementById('livetab-settings');
+    if (!root) return;
+
+    function mount() {
+        const lt = window.livetab;
+        if (!lt || typeof lt.mountSettings !== 'function') return false;
+        lt.mountSettings(root);
+        return true;
+    }
+
+    // The plugin script attaches when the player mounts a visualization, so it
+    // may not be there yet on a cold settings screen. Retry briefly, then say
+    // so rather than leaving an empty panel.
+    if (!mount()) {
+        let tries = 0;
+        const timer = setInterval(() => {
+            tries += 1;
+            if (mount() || tries > 40) {
+                clearInterval(timer);
+                if (!window.livetab) {
+                    root.textContent = 'Open a song once with Live Tab selected, '
+                        + 'then come back — the options load with the plugin.';
+                }
+            }
+        }, 250);
+    }
+})();
+</script>
