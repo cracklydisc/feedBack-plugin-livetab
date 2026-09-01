@@ -24,6 +24,8 @@ does something odd on one of yours, the settings panel has a **Copy
 diagnostics** button — paste what it gives you into the bug report and the chart
 can be diagnosed without anyone having to own it.
 
+What changed between versions is in the [changelog](livetab/CHANGELOG.md).
+
 ---
 
 ## Install

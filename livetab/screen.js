@@ -120,14 +120,19 @@
             key: 'pageBars', type: 'int', def: 2, min: 1, max: 4, group: 'reading',
             label: 'Bars per staff', when: isPaged,
             hint: 'Two bars of 4/4 is a comfortable line. More bars fit more music '
-                + 'between turns, at the cost of packing the notes tighter.',
+                + 'between turns, at the cost of packing the notes tighter. A '
+                + 'fast song is given more of them, so that a staff lasts long '
+                + 'enough to read; the panel shows both numbers when it does, and '
+                + 'moving this slider takes the decision back.',
         },
         {
             key: 'aheadBeats', type: 'num', def: 5, min: 2, max: 24, step: 0.5,
             group: 'reading', label: 'Ahead', unit: 'beats', when: isScroll,
-            hint: 'How much of what is coming is on screen. Measured in beats, not '
-                + 'seconds, so note spacing stays the same in a slow song and a '
-                + 'fast one and the scroll follows the tempo.',
+            hint: 'How much of what is coming is on screen, in beats — so note '
+                + 'spacing is proportional to note value and a quarter really is '
+                + 'twice an eighth. Above a moderate tempo the window widens to '
+                + 'keep the reading speed steady, and the panel shows both '
+                + 'numbers: what you asked for, and what is on screen.',
         },
         {
             key: 'behindBeats', type: 'num', def: 1.25, min: 0.5, max: 8, step: 0.25,
@@ -639,6 +644,11 @@
 
     let tempoCache = { beats: null, map: null };
 
+    // Whether the bars-per-staff slider has been moved by hand for the song
+    // now loaded. A preset does not count as moving it — a preset is a set of
+    // defaults, and the pace floor is one of the things it defaults to.
+    let pageBarsPinned = false;
+
     function buildTempoMap(beats) {
         const raw = [];
         for (const b of beats || []) {
@@ -735,6 +745,19 @@
             return 60 / spans[Math.floor(spans.length / 2)];
         };
 
+        // One tempo for the whole song, alongside the local one above. The
+        // reading window is sized from it, and a window that breathed with
+        // every tempo change would zoom the notes in and out while they are
+        // being read — the steadiness is the point.
+        const wholeSong = [];
+        for (let i = 1; i < grid.length; i++) {
+            const d = grid[i] - grid[i - 1];
+            if (d > 0.05 && d < 4) wholeSong.push(d);
+        }
+        wholeSong.sort((a, b) => a - b);
+        map.bpm = wholeSong.length
+            ? 60 / wholeSong[Math.floor(wholeSong.length / 2)] : 60 / ref;
+
         // Beats per bar, measured in the cleaned grid's own units. The median
         // shrugs off a pickup bar or a lone 2/4.
         let beatsPerBar = 4;
@@ -807,6 +830,9 @@
         if (tempoCache.beats === beats) return tempoCache.map;
         const map = buildTempoMap(beats);
         tempoCache = { beats: beats, map: map };
+        // A new chart is a new question about how long a staff should be, so
+        // the hand-set override does not follow you from the last song.
+        pageBarsPinned = false;
         return map;
     }
 
@@ -815,7 +841,7 @@
         const ref = 0.5;
         return {
             ref: ref, grid: [0], markers: [], barPos: [], beatsPerBar: 4,
-            anchor: 0, anchorBar: 0,
+            anchor: 0, anchorBar: 0, bpm: 60 / ref,
             stats: { raw: 0, kept: 0, dropped: 0, filled: 0 },
             pos: (t) => t / ref,
             time: (p) => p * ref,
@@ -836,6 +862,76 @@
 
     const PAGE_TURN_MS = 260;
     let pageAnim = { index: null, since: 0 };
+
+    // The pace of the reading.
+    //
+    // Both modes size themselves in musical units — beats for the scrolling
+    // window, bars for a staff — which is right for note spacing and wrong for
+    // speed. A window of a fixed number of beats crosses the screen at a rate
+    // proportional to the tempo, and a display holds each frame for a refresh,
+    // so a moving glyph is smeared over speed/refresh pixels. Measured across
+    // forty charts at the default setting: 294 px/s and a 5 px smear at 70 bpm,
+    // 848 px/s and 14 px at 201 — wider than a fret digit is. Slow songs read
+    // perfectly, fast ones blur, which is precisely what came back from the
+    // people playing them.
+    //
+    // So the window stretches with the tempo instead: above PACE_BPM the
+    // reading speed is held at what it is at PACE_BPM, below it nothing
+    // changes. Note spacing stays proportional to note value either way — only
+    // how much of the song is on screen moves.
+    //
+    // There is no switch for this. It was built with one, and the honest answer
+    // to "when would you turn it off?" is: to read a fast song at a speed that
+    // was measured as unreadable. The sliders still say how much is on screen,
+    // which is the control anyone actually wanted, and in page turns moving the
+    // slider takes the decision back completely.
+    const PACE_BPM = 120;
+    const PACE_MAX = 2;          // never more than twice what was asked for
+    const PAGE_SECONDS = 4;      // the shortest a staff may last
+    const PAGE_MAX_BEATS = 32;   // ...and the most it may hold
+
+    function songBPM(map) {
+        const bpm = map && map.bpm;
+        return (isFinite(bpm) && bpm > 20 && bpm < 400) ? bpm : PACE_BPM;
+    }
+
+    /** How much wider the scrolling window is than the setting asks. */
+    function paceFactor(map) {
+        return Math.max(1, Math.min(PACE_MAX, songBPM(map) / PACE_BPM));
+    }
+
+    /**
+     * How many bars a staff would need in order to last long enough to read.
+     *
+     * One chart in this library marks every single beat as a bar, which made a
+     * two-bar staff 1.1 seconds long and turned the page once a second — that
+     * is the report about page turns showing almost no notes.
+     */
+    function barsNeeded(map) {
+        if (!map) return 1;
+        const perBar = Math.max(1, map.beatsPerBar);
+        const needed = Math.ceil(PAGE_SECONDS * songBPM(map) / 60 / perBar);
+        return Math.max(1, Math.min(needed, Math.floor(PAGE_MAX_BEATS / perBar)));
+    }
+
+    /**
+     * How many bars one staff actually holds.
+     *
+     * The floor is a starting point, not a rule. Left alone it raises a fast
+     * song to something readable; the moment the slider is touched it steps
+     * out of the way and the number on the slider is the number on screen.
+     *
+     * Without that it was worse than the problem it solved: at 181 bpm the
+     * floor is four bars, so asking for one, two, three or four all drew four
+     * and the slider did nothing at all in three of its four positions. A
+     * control that ignores you is not a sensible default, whatever it is
+     * defaulting to.
+     */
+    function staffBars(map) {
+        const asked = Math.max(1, S.pageBars);
+        if (!map || pageBarsPinned) return asked;
+        return Math.max(asked, barsNeeded(map));
+    }
 
     /**
      * How far the stack still has to travel, 1 -> 0, for the current page.
@@ -860,9 +956,14 @@
         const nowP = map.pos(now);
 
         if (S.readMode !== 'page') {
-            const span = Math.max(1, S.aheadBeats + S.behindBeats);
+            // Ahead and behind stretch together, so the cursor keeps its place
+            // across the width and the tab does not appear to jump sideways
+            // when the song changes.
+            const pace = paceFactor(map);
+            const span = Math.max(1, (S.aheadBeats + S.behindBeats) * pace);
             return [{
-                row: 0, p0: nowP - S.behindBeats, pSpan: span, cursorP: nowP, veil: 0,
+                row: 0, p0: nowP - S.behindBeats * pace, pSpan: span,
+                cursorP: nowP, veil: 0,
             }];
         }
 
@@ -871,7 +972,7 @@
         // instead looks identical until the chart contains one irregular bar:
         // this song has a two-beat bar in its intro, and from there on every
         // staff began half a bar late and stayed that way.
-        const perPage = Math.max(1, S.pageBars);
+        const perPage = staffBars(map);
         const bar = map.barIndexAt(nowP);
         const index = Math.floor((bar - map.anchorBar) / perPage);
         const shift = pageShift(index);
@@ -2206,26 +2307,87 @@
         return (f.key === 'board') ? boardOptions() : (f.options || []);
     }
 
+    // The host owns the palette and lets a plugin read it: theme.get() returns
+    // the semantic roles as "r g b" triplets, and theme:changed fires when
+    // somebody equips a theme in the shop. A panel carrying its own hex values
+    // is a panel that stops matching the app the moment that happens — the
+    // regression docs/host-theme-contract.md was written about. In markup the
+    // same roles are the fb-* utilities, which the host recolours for us.
+    const ROLES = {
+        bg: '15 23 42', card: '30 41 59', cardMuted: '11 18 32',
+        border: '51 65 85', text: '248 250 252', textDim: '148 163 184',
+        primary: '14 165 233', primaryHi: '56 189 248',
+        'on-accent': '248 250 252',
+    };
+
+    let theme = Object.assign({}, ROLES);
+
+    /** One theme role as a CSS colour, optionally at `alpha`. */
+    function ink(role, alpha) {
+        const rgb = theme[role] || ROLES[role] || ROLES.text;
+        return (alpha === undefined)
+            ? ('rgb(' + rgb + ')') : ('rgb(' + rgb + ' / ' + alpha + ')');
+    }
+
+    /**
+     * What stays legible written on top of a fill.
+     *
+     * The host's palette has no such role: a theme declares its accent and
+     * says nothing about what goes on it, so white-on-amber is a contrast
+     * failure waiting to happen — the one host-theme-contract.md opens with.
+     * Chosen from the fill's own luminance instead of assumed.
+     */
+    function inkOn(role) {
+        const parts = String(theme[role] || ROLES[role] || '').split(/\s+/).map(Number);
+        if (parts.length < 3 || parts.some((n) => !isFinite(n))) return ink('text');
+        const lin = parts.map((v) => {
+            const c = v / 255;
+            return (c <= 0.04045) ? (c / 12.92) : Math.pow((c + 0.055) / 1.055, 2.4);
+        });
+        const L = 0.2126 * lin[0] + 0.7152 * lin[1] + 0.0722 * lin[2];
+        return (L > 0.35) ? ink('bg') : ink('text');
+    }
+
+    function readTheme() {
+        const api = window.feedBack && window.feedBack.theme;
+        if (!api || typeof api.get !== 'function') return;
+        try {
+            const got = api.get();
+            if (got && got.tokens) theme = Object.assign({}, ROLES, got.tokens);
+        } catch (_) { /* an older host: the defaults above are the same palette */ }
+    }
+
     const CLS = {
-        hint: 'block text-xs text-slate-500 mt-0.5',
-        label: 'text-slate-300',
-        select: 'mt-1 w-full bg-slate-800 border border-slate-700 rounded px-2 py-1',
-        range: 'w-full accent-sky-500',
-        check: 'w-4 h-4 accent-emerald-500 mt-0.5',
+        hint: 'block text-xs text-fb-textDim mt-0.5',
+        label: 'text-fb-text',
+        select: 'mt-1 w-full bg-fb-cardMuted border border-fb-border rounded '
+            + 'px-2 py-1 text-fb-text focus:border-fb-primary',
+        range: 'w-full',
+        check: 'w-4 h-4 mt-0.5',
         chip: 'px-2.5 py-1 rounded-full border text-xs font-semibold',
+        // accent-fb-primary exists as a utility but the host's theme CSS only
+        // rewrites bg-/text-/border-, so it would keep its build-time blue
+        // under every theme. Written from the token in sync() instead.
+        chipOn: ' bg-fb-primary border-fb-primary',
+        chipOff: ' bg-fb-cardMuted border-fb-border text-fb-textDim '
+            + 'hover:bg-fb-card hover:text-fb-text',
     };
 
     function mountSettings(root) {
         if (!root) return null;
+        // The settings screen can be the first thing that runs — a cold visit
+        // with no song ever opened — so the palette is read here too, not only
+        // when the in-player panel mounts.
+        watchTheme();
         root.textContent = '';
         root.className = 'p-4 space-y-4 text-sm';
 
         const h3 = document.createElement('h3');
-        h3.className = 'text-base font-semibold text-slate-100';
+        h3.className = 'text-base font-semibold text-fb-text';
         h3.textContent = 'Live Tab';
         root.appendChild(h3);
         const sub = document.createElement('p');
-        sub.className = 'text-xs text-slate-400';
+        sub.className = 'text-xs text-fb-textDim';
         sub.textContent = 'A tablature you can read while it moves, with any note '
             + 'board hosted above it. Hit and miss come from the same judgment the '
             + 'board uses, so a fret number turns green or red as the gem does — '
@@ -2236,7 +2398,7 @@
         const presetBox = document.createElement('div');
         presetBox.className = 'space-y-2';
         const presetHead = document.createElement('div');
-        presetHead.className = 'text-xs uppercase tracking-wide text-slate-400';
+        presetHead.className = 'text-xs uppercase tracking-wide text-fb-textDim';
         presetHead.textContent = 'Preset';
         presetBox.appendChild(presetHead);
         const chips = document.createElement('div');
@@ -2277,7 +2439,7 @@
                 wrap.appendChild(input);
                 const txt = document.createElement('span');
                 const name = document.createElement('span');
-                name.className = 'text-slate-200';
+                name.className = 'text-fb-text';
                 name.textContent = f.label;
                 txt.appendChild(name);
                 if (f.hint) {
@@ -2344,10 +2506,10 @@
             let wrapper;
             if (g.advanced) {
                 const det = document.createElement('details');
-                det.className = 'border border-slate-800 rounded';
+                det.className = 'border border-fb-border rounded';
                 const sum = document.createElement('summary');
                 sum.className = 'px-3 py-2 cursor-pointer text-xs uppercase '
-                    + 'tracking-wide text-slate-400 select-none';
+                    + 'tracking-wide text-fb-textDim select-none';
                 sum.textContent = g.label;
                 det.appendChild(sum);
                 container = document.createElement('div');
@@ -2370,7 +2532,7 @@
         foot.className = 'flex items-center gap-3 pt-1';
         const reset = document.createElement('button');
         reset.type = 'button';
-        reset.className = 'px-3 py-1.5 rounded bg-slate-700 hover:bg-slate-600 text-slate-100';
+        reset.className = 'px-3 py-1.5 rounded bg-fb-card hover:bg-fb-border text-fb-text';
         reset.textContent = 'Reset to defaults';
         reset.addEventListener('click', () => { api.reset(); });
         foot.appendChild(reset);
@@ -2380,8 +2542,8 @@
         // it. One button, one paste.
         const copy = document.createElement('button');
         copy.type = 'button';
-        copy.className = 'px-3 py-1.5 rounded bg-slate-800 hover:bg-slate-700 '
-            + 'text-slate-300 border border-slate-700';
+        copy.className = 'px-3 py-1.5 rounded bg-fb-cardMuted hover:bg-fb-card '
+            + 'text-fb-text border border-fb-border';
         copy.textContent = 'Copy diagnostics';
         copy.title = 'Copies a snapshot of the plugin, the app and this chart, '
             + 'to paste into a bug report.';
@@ -2414,7 +2576,7 @@
         foot.appendChild(copy);
 
         const status = document.createElement('span');
-        status.className = 'text-xs text-slate-500';
+        status.className = 'text-xs text-fb-textDim';
         foot.appendChild(status);
         root.appendChild(foot);
 
@@ -2423,15 +2585,17 @@
             sync() {
                 const active = activePresetId();
                 for (const c of chipEls) {
-                    c.el.className = CLS.chip + ((c.id === active)
-                        ? ' bg-sky-500/20 border-sky-400/60 text-sky-100'
-                        : ' bg-slate-800 border-slate-700 text-slate-300 hover:bg-slate-700');
+                    const on = c.id === active;
+                    c.el.className = CLS.chip + (on ? CLS.chipOn : CLS.chipOff);
+                    // Not a utility and not a token: see inkOn().
+                    c.el.style.color = on ? inkOn('primary') : '';
                 }
                 const p = PRESETS.find((x) => x.id === active);
                 presetHint.textContent = p ? p.hint
                     : 'Custom — your own mix of the options below.';
 
                 for (const c of controls) {
+                    if (c.input) c.input.style.accentColor = ink('primary');
                     const live = fieldLive(c.f);
                     c.wrap.style.display = live ? '' : 'none';
                     if (!live) continue;
@@ -2485,18 +2649,90 @@
     // to extend, and v3 exposes a stable slot for exactly this.
     // ─────────────────────────────────────────────────────────────────────
 
-    const BTN_CSS = [
-        'display:block', 'width:100%', 'text-align:left',
-        'padding:5px 7px', 'margin-bottom:2px', 'border-radius:6px',
-        'border:0', 'cursor:pointer', 'background:transparent',
-        'font:600 11px Inter,system-ui,sans-serif',
-    ].join(';');
+    // Every rule that carries a colour is a function of the host palette, so
+    // one repaint on theme:changed moves the whole panel. Geometry stays
+    // inline and literal: sizes do not need a theme, and a runtime-installed
+    // plugin cannot rely on arbitrary-value Tailwind classes existing in the
+    // served stylesheet (docs/plugin-styles.md).
+    const FONT = 'Inter,system-ui,sans-serif';
 
-    const CHIP_CSS = [
-        'padding:3px 8px', 'border-radius:999px', 'cursor:pointer',
-        'border:1px solid rgba(148,163,184,0.35)', 'background:transparent',
-        'color:#cbd5e1', 'font:600 10px Inter,system-ui,sans-serif',
-    ].join(';');
+    function btnCSS() {
+        return [
+            'display:block', 'width:100%', 'text-align:left',
+            'padding:5px 7px', 'margin-bottom:2px', 'border-radius:6px',
+            'border:0', 'cursor:pointer', 'background:transparent',
+            'color:' + ink('textDim'), 'font:600 11px ' + FONT,
+        ].join(';');
+    }
+
+    function chipCSS() {
+        return [
+            'padding:3px 8px', 'border-radius:999px', 'cursor:pointer',
+            'border:1px solid ' + ink('border'), 'background:transparent',
+            'color:' + ink('textDim'), 'font:600 10px ' + FONT,
+        ].join(';');
+    }
+
+    function panelCSS() {
+        return [
+            'position:fixed', 'top:64px', 'right:12px', 'width:248px',
+            'max-height:74vh', 'overflow-y:auto', 'overscroll-behavior:contain',
+            'scrollbar-width:thin', 'padding:10px', 'border-radius:10px',
+            'background:' + ink('bg', 0.97), 'border:1px solid ' + ink('border'),
+            'box-shadow:0 10px 30px rgb(0 0 0 / 0.5)',
+            'font:500 11px ' + FONT, 'color:' + ink('textDim'),
+        ].join(';');
+    }
+
+    function pillCSS() {
+        return [
+            'display:inline-flex', 'align-items:center', 'gap:6px',
+            'padding:5px 10px', 'border-radius:999px',
+            'background:' + ink('card', 0.85), 'border:1px solid ' + ink('border'),
+            'color:' + ink('text'), 'font:600 11px ' + FONT, 'cursor:pointer',
+        ].join(';');
+    }
+
+    function selectCSS() {
+        return [
+            'width:100%', 'padding:4px 6px', 'border-radius:6px',
+            'background:' + ink('cardMuted'), 'color:' + ink('text'),
+            'border:1px solid ' + ink('border'),
+            'font:600 11px ' + FONT, 'cursor:pointer',
+        ].join(';');
+    }
+
+    /**
+     * Put the host's current colours back on every part of the panel.
+     *
+     * Called once at mount and again whenever a theme is equipped. Display
+     * state is deliberately preserved: a repaint must not open or close it.
+     */
+    function repaintControls() {
+        if (!controlPanel) return;
+        const open = controlPanel.style.display;
+        controlPanel.style.cssText = panelCSS() + ';z-index:' + panelZ()
+            + ';display:' + (open || 'none');
+        const pill = controlWrap && controlWrap.firstChild;
+        if (pill) pill.style.cssText = pillCSS();
+        for (const el of controlPanel.querySelectorAll('[data-chip]')) {
+            el.style.cssText = chipCSS();
+        }
+        for (const el of controlPanel.querySelectorAll('[data-btn]')) {
+            el.style.cssText = btnCSS();
+        }
+        for (const el of controlPanel.querySelectorAll('[data-heading]')) {
+            el.style.color = ink('textDim');
+        }
+        for (const el of controlPanel.querySelectorAll('input[type="range"],input[type="checkbox"]')) {
+            el.style.accentColor = ink('primary');
+        }
+        const sticky = controlPanel.querySelector('[data-sticky]');
+        if (sticky) sticky.style.background = ink('bg', 0.97);
+        const sel = controlPanel.querySelector('[data-board-select]');
+        if (sel) sel.style.cssText = selectCSS();
+        syncControl();
+    }
 
     let controlWrap = null;
     let controlLabel = null;
@@ -2547,14 +2783,13 @@
             ? 'Tab off' : ('Tab · ' + (preset ? preset.label : 'Custom'));
         if (!controlPanel) return;
         const mark = (el, on) => {
-            el.style.background = on ? 'rgba(56,189,248,0.22)' : 'transparent';
-            el.style.color = on ? '#e0f2fe' : '#cbd5e1';
+            el.style.background = on ? ink('primary', 0.22) : 'transparent';
+            el.style.color = on ? ink('text') : ink('textDim');
         };
         for (const el of controlPanel.querySelectorAll('[data-preset]')) {
             const on = el.getAttribute('data-preset') === active;
             mark(el, on);
-            el.style.borderColor = on
-                ? 'rgba(56,189,248,0.6)' : 'rgba(148,163,184,0.35)';
+            el.style.borderColor = on ? ink('primary', 0.6) : ink('border');
         }
         const boardSel = controlPanel.querySelector('[data-board-select]');
         if (boardSel && boardSel.options.length) boardSel.value = S.board;
@@ -2567,15 +2802,27 @@
             const parts = el.getAttribute('data-enum').split(':');
             const on = S[parts[0]] === parts[1];
             mark(el, on);
-            el.style.borderColor = on
-                ? 'rgba(56,189,248,0.6)' : 'rgba(148,163,184,0.35)';
+            el.style.borderColor = on ? ink('primary', 0.6) : ink('border');
         }
         for (const el of controlPanel.querySelectorAll('[data-key]')) {
             el.value = String(S[el.getAttribute('data-key')]);
         }
+        // A slider that reads 2 while four bars are on screen is a panel
+        // telling a lie, and the first thing it costs is the belief that the
+        // slider does anything at all. Where the pace correction is changing
+        // the number, both are shown: what was asked for, and what is drawn.
+        const map = tempoCache.map;
+        const effective = {
+            pageBars: (S.readMode === 'page') ? staffBars(map) : null,
+            aheadBeats: (S.readMode === 'scroll')
+                ? Math.round(S.aheadBeats * paceFactor(map) * 10) / 10 : null,
+        };
         for (const el of controlPanel.querySelectorAll('[data-out]')) {
             const key = el.getAttribute('data-out');
-            el.textContent = String(Math.round(S[key] * 100) / 100)
+            const asked = Math.round(S[key] * 100) / 100;
+            const now = effective[key];
+            el.textContent = String(asked)
+                + ((now != null && now !== asked) ? (' → ' + now) : '')
                 + (el.getAttribute('data-suffix') || '');
         }
         // A row for a setting that does not apply right now is not greyed out,
@@ -2628,9 +2875,10 @@
             const b = document.createElement('button');
             b.type = 'button';
             b.setAttribute('data-enum', key + ':' + choice[0]);
+            b.setAttribute('data-chip', '1');
             b.textContent = choice[1];
             if (choice[2]) b.title = choice[2];
-            b.style.cssText = CHIP_CSS;
+            b.style.cssText = chipCSS();
             b.addEventListener('click', () => { api.set({ [key]: choice[0] }); });
             row.appendChild(b);
         }
@@ -2640,10 +2888,28 @@
     function controlHeading(text, key) {
         const el = document.createElement('div');
         el.textContent = text;
+        el.setAttribute('data-heading', '1');
         if (key) el.setAttribute('data-row', key);
-        el.style.cssText = 'font:700 9px Inter,system-ui,sans-serif;letter-spacing:.08em;'
-            + 'color:#64748b;margin:8px 0 4px';
+        el.style.cssText = 'font:700 9px ' + FONT + ';letter-spacing:.08em;'
+            + 'color:' + ink('textDim') + ';margin:8px 0 4px';
         return el;
+    }
+
+    /**
+     * Where the panel hangs, and how high it stacks.
+     *
+     * docs/plugin-v3-ui.md sets the chrome's layers: transport and HUD at 20,
+     * the rail at 30, popovers at 40. Inside #player — which is fixed, full
+     * bleed and clips nothing — those numbers are the ones that apply, and the
+     * panel is a popover. Only when there is no player to hang from does it
+     * fall back to the body, where it has to clear #player's own 100.
+     */
+    function panelHost() {
+        return document.getElementById('player') || document.body;
+    }
+
+    function panelZ() {
+        return document.getElementById('player') ? 40 : 150;
     }
 
     function mountControls() {
@@ -2656,13 +2922,7 @@
 
         const pill = document.createElement('button');
         pill.type = 'button';
-        pill.style.cssText = [
-            'display:inline-flex', 'align-items:center', 'gap:6px',
-            'padding:5px 10px', 'border-radius:999px',
-            'background:rgba(15,23,42,0.85)', 'border:1px solid rgba(148,163,184,0.35)',
-            'color:#e2e8f0', 'font:600 11px Inter,system-ui,sans-serif',
-            'cursor:pointer',
-        ].join(';');
+        pill.style.cssText = pillCSS();
         controlLabel = document.createElement('span');
         pill.appendChild(controlLabel);
         controlWrap.appendChild(pill);
@@ -2679,22 +2939,14 @@
         // upward. Parked in the corner it is clipped by nothing, moves for
         // nothing, and needs no code to follow anything about.
         controlPanel = document.createElement('div');
-        controlPanel.style.cssText = [
-            'position:fixed', 'top:64px', 'right:12px', 'width:248px',
-            'max-height:74vh', 'overflow-y:auto', 'overscroll-behavior:contain',
-            'scrollbar-width:thin', 'padding:10px', 'border-radius:10px',
-            'background:rgba(9,13,22,0.97)', 'border:1px solid rgba(148,163,184,0.28)',
-            'box-shadow:0 10px 30px rgba(0,0,0,0.5)', 'display:none',
-            // Above the player (z-100 against the body) and below the app's own
-            // overlays: the tour popover sits at 201 and the tuner at 1001.
-            'z-index:150',
-            'font:500 11px Inter,system-ui,sans-serif', 'color:#cbd5e1',
-        ].join(';');
+        controlPanel.style.cssText = panelCSS() + ';z-index:' + panelZ()
+            + ';display:none';
 
         const showRow = document.createElement('label');
         showRow.setAttribute('data-row', 'enabled');
         showRow.style.cssText = 'display:flex;align-items:center;gap:6px;cursor:pointer';
         const showBox = document.createElement('input');
+        showBox.style.accentColor = ink('primary');
         showBox.type = 'checkbox';
         showBox.setAttribute('data-show', '1');
         showBox.addEventListener('change', () => { api.set({ enabled: showBox.checked }); });
@@ -2712,9 +2964,10 @@
         // want — and the show/hide switch belongs with them rather than above
         // them, where the pinned header would slide over it.
         const presetBox = document.createElement('div');
+        presetBox.setAttribute('data-sticky', '1');
         presetBox.style.cssText = [
             'position:sticky', 'top:-10px', 'z-index:2',
-            'background:rgba(9,13,22,0.97)', 'padding:10px 0 6px', 'margin:-10px 0 0',
+            'background:' + ink('bg', 0.97), 'padding:10px 0 6px', 'margin:-10px 0 0',
         ].join(';');
         presetBox.appendChild(showRow);
         presetBox.appendChild(controlHeading('PRESET'));
@@ -2725,9 +2978,10 @@
             const b = document.createElement('button');
             b.type = 'button';
             b.setAttribute('data-preset', preset.id);
+            b.setAttribute('data-chip', '1');
             b.textContent = preset.label;
             b.title = preset.hint;
-            b.style.cssText = CHIP_CSS;
+            b.style.cssText = chipCSS();
             b.addEventListener('click', () => { api.applyPreset(preset.id); });
             presetRow.appendChild(b);
         }
@@ -2738,8 +2992,9 @@
             const b = document.createElement('button');
             b.type = 'button';
             b.setAttribute('data-mode', opt[0]);
+            b.setAttribute('data-btn', '1');
             b.textContent = opt[1];
-            b.style.cssText = BTN_CSS;
+            b.style.cssText = btnCSS();
             b.addEventListener('click', () => { api.set({ readMode: opt[0] }); });
             controlPanel.appendChild(b);
         }
@@ -2767,12 +3022,7 @@
         const boards = document.createElement('select');
         boards.setAttribute('data-board-select', '1');
         boards.setAttribute('data-row', 'board');
-        boards.style.cssText = [
-            'width:100%', 'padding:4px 6px', 'border-radius:6px',
-            'background:#0f172a', 'color:#e2e8f0',
-            'border:1px solid rgba(148,163,184,0.35)',
-            'font:600 11px Inter,system-ui,sans-serif', 'cursor:pointer',
-        ].join(';');
+        boards.style.cssText = selectCSS();
         boards.addEventListener('change', () => { api.set({ board: boards.value }); });
         controlPanel.appendChild(boards);
 
@@ -2781,12 +3031,23 @@
         // Clicking a control focuses it, and the browser then scrolls the
         // panel to keep the focused thing in view — which is what pushed the
         // presets out of sight the moment someone changed a setting.
+        //
+        // A button does not need its default, so it can lose it. An input is
+        // not ours to cancel — the default is how a slider is dragged and a
+        // checkbox is ticked, and whether a given browser survives losing it
+        // is not something to rely on. So an input keeps it, and the panel's
+        // scroll position is simply put back afterwards.
         controlPanel.addEventListener('mousedown', (ev) => {
             const t = ev.target;
-            if (t && (t.tagName === 'BUTTON' || t.tagName === 'INPUT')) ev.preventDefault();
+            if (!t) return;
+            if (t.tagName === 'BUTTON') { ev.preventDefault(); return; }
+            if (t.tagName !== 'INPUT') return;
+            const top = controlPanel.scrollTop;
+            const put = () => { controlPanel.scrollTop = top; };
+            if (window.requestAnimationFrame) requestAnimationFrame(put); else put();
         });
 
-        document.body.appendChild(controlPanel);
+        panelHost().appendChild(controlPanel);
 
         const closePanel = () => { controlPanel.style.display = 'none'; };
 
@@ -2804,7 +3065,30 @@
 
         slot.appendChild(controlWrap);
         rebuildBoardButtons();
+        watchTheme();
         return true;
+    }
+
+    /**
+     * Follow the host's palette for as long as the panel exists.
+     *
+     * Bound once: the panel is rebuilt when the player remounts, and a
+     * listener per mount would repaint it as many times as the song has been
+     * opened.
+     */
+    let themeBound = false;
+
+    function watchTheme() {
+        readTheme();
+        repaintControls();
+        const fb = window.feedBack;
+        if (themeBound || !fb || typeof fb.on !== 'function') return;
+        themeBound = true;
+        fb.on('theme:changed', () => {
+            readTheme();
+            repaintControls();
+            notifyPanels();       // the settings screen's one inline colour
+        });
     }
 
     // ─────────────────────────────────────────────────────────────────────
@@ -2870,6 +3154,9 @@
                 beatsPerBar: map.beatsPerBar,
                 bars: map.barPos.length,
                 anchorBar: map.anchorBar,
+                bpm: Math.round(map.bpm),
+                paceFactor: Math.round(paceFactor(map) * 100) / 100,
+                barsPerStaff: staffBars(map),
             } : null,
         };
         out.summary = ID + ' ' + VERSION + ' · ' + (out.song.title || 'no song')
@@ -2899,9 +3186,14 @@
         activePreset() { return activePresetId(); },
         applyPreset(id) {
             const p = PRESETS.find((x) => x.id === id);
-            return p ? this.set(p.values) : this.get();
+            if (!p) return this.get();
+            const out = this.set(p.values);
+            pageBarsPinned = false;      // a preset restores the defaults
+            notifyPanels();
+            return out;
         },
         set(patch) {
+            if (patch && patch.pageBars !== undefined) pageBarsPinned = true;
             S = normalise(Object.assign({}, S, patch || {}));
             saveSettings();
             notifyPanels();
