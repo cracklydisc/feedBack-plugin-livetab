@@ -1,0 +1,36 @@
+{
+  "id": "livetab",
+  "name": "Live Tab",
+  "version": "0.28.0",
+  "script": "screen.js",
+  "category": "practice",
+  "description": "Scrolling tablature with live hit/miss feedback. Hosts a note board above the tab so neither covers the other, or shows the tab alone.",
+  "icon": "assets/thumb.svg",
+  "settings": {
+    "html": "settings.html",
+    "category": "graphics"
+  },
+  "type": "visualization",
+  "standards": [
+    "capability-pipelines.v1",
+    "plugin-runtime-idempotent.v1"
+  ],
+  "capabilities": {
+    "visualization": {
+      "roles": [
+        "provider"
+      ],
+      "operations": [
+        "renderer.create",
+        "renderer.destroy"
+      ],
+      "emits": [
+        "renderer-ready",
+        "renderer-failed"
+      ],
+      "mode": "active",
+      "safety": "safe",
+      "description": "Draws the tab, and hosts another provider's board above it."
+    }
+  }
+}

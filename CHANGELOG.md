@@ -8,6 +8,58 @@ and it follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 Versions before 0.26.1 were never published; the history starts at the first
 public alpha.
 
+## [0.28.0] — 2026-09-01
+
+### Added
+
+- **A rhythm ruler.** Note spacing was already proportional to note value, so
+  where a note sits between two beats already *is* its rhythm — there was just
+  nothing to count it against. The staff is now ruled at whole beats, and at
+  halves and quarters of a beat when there is room to tell them apart, each
+  weight fainter than the last so the lines are something to land on rather
+  than something to read. Off, whole beats, or subdivided: your choice.
+- **The loop, drawn on the staff.** When a loop is armed, the stretch that
+  repeats is shaded and its ends are marked with repeat signs — the heavy bar,
+  thin line and two dots every musician already reads — in the same green as
+  the app's own loop buttons. Learning a passage is playing it round and round,
+  and the thing that gets lost is where round begins.
+- Live Tab declares itself to the app's capability graph as a visualization
+  provider, and reports when its renderer comes up or fails to. It was a blank
+  row in the Capability Inspector before, which is unhelpful to anyone trying
+  to work out why a player is empty.
+
+### Changed
+
+- **Bars per staff is one slider, 1 to 8, the same on every song.** Three is
+  the default: it lasts between three and a half and thirteen seconds depending
+  on the tempo, and holds twelve beats, which stays legible at any width. There
+  is no automatic count and nothing that changes from song to song, because
+  with bar lines read correctly none of that is needed. Past eight a fret
+  number has under 30 pixels to itself and the heads start touching.
+- **The repository is now the plugin, so it can be cloned into place.** Install
+  it with `git clone … livetab` inside your plugins folder and the app can
+  update it for you from **Plugins → Check for Updates**. That already worked
+  for any plugin that is a git checkout; Live Tab was shaped so that it could
+  never be one, which is why nobody on 0.26.1 ever heard about 0.27.0. The ZIP
+  install still works, and still cannot update itself.
+
+### Fixed
+
+- **Bar lines were miscounted on charts that spell out every beat.** A bar line
+  is where the measure *number changes*, not merely where a beat carries one.
+  Most charts tag only the downbeat, but one tags every beat and repeats the
+  number — 1,1,1,1, 2,2,2,2 — which is a plain 4/4 written out beat by beat.
+  Reading it the old way gave that chart four bars for every real one: a
+  picket fence of bar lines and numbers, and a staff that held a quarter of the
+  music it should. Across a library of forty charts the two readings agree
+  everywhere else. *(This was the real cause behind the bars-per-staff
+  complaints; the automatic count and the moving slider ceiling that were
+  briefly built to compensate for it are gone with it.)*
+- Re-running the plugin's script — which the app does on update, rollback and
+  reinstall — used to leave the previous run's settings panel orphaned in the
+  page, its theme listener still firing and its retry timer still ticking. Each
+  run now dismantles its predecessor first.
+
 ## [0.27.0] — 2026-09-01
 
 ### Changed

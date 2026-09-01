@@ -29,6 +29,47 @@
     const ID = 'livetab';
     const LS_KEY = 'livetab.settings';
 
+    // ── Running twice ────────────────────────────────────────────────────
+    //
+    // The host re-evaluates a plugin's script on update, rollback and
+    // reinstall. Everything below is built fresh when it does, so without
+    // this a second run would leave the first run's panel orphaned in the
+    // DOM, its theme listener still firing, and its mount-retry timer still
+    // ticking — three of the things plugin-runtime-idempotent.v1 names.
+    //
+    // So each run publishes how to dismantle itself on a stable window key,
+    // and calls its predecessor's before building anything. The shape is the
+    // one docs/capability-domains.md prescribes for shared plugin state.
+    const HOOKS_KEY = '__feedBackLiveTabHooks';
+
+    try {
+        const prev = window[HOOKS_KEY];
+        if (prev && typeof prev.teardown === 'function') prev.teardown();
+    } catch (err) {
+        console.warn('[' + ID + '] the previous instance did not come down '
+            + 'cleanly; carrying on:', err);
+    }
+
+    /** Everything this run has to undo, newest last. */
+    const disposers = [];
+
+    /**
+     * Tell the capability graph how the renderer got on.
+     *
+     * The host records who is providing the visualization and why one failed;
+     * a provider that never says is a blank row in the inspector when someone
+     * is trying to work out why the screen is empty.
+     */
+    function emitViz(event, payload) {
+        const caps = window.feedBack && window.feedBack.capabilities;
+        if (!caps || caps.version !== 1 || typeof caps.emitEvent !== 'function') return;
+        try {
+            caps.emitEvent('visualization', event, Object.assign({ providerId: ID }, payload || {}));
+        } catch (_) { /* the graph is a nicety, never a dependency */ }
+    }
+
+    function onTeardown(fn) { disposers.push(fn); }
+
     // The host cache-busts plugin scripts with `?v=<manifest version>`, so the
     // running version can be read off our own <script> tag rather than kept in
     // a constant here that would drift from plugin.json the first time someone
@@ -117,13 +158,14 @@
                 + 'at once give the eye no way to tell which line is now.',
         },
         {
-            key: 'pageBars', type: 'int', def: 2, min: 1, max: 4, group: 'reading',
+            key: 'pageBars', type: 'int', def: 3, min: 1, max: 8, group: 'reading',
             label: 'Bars per staff', when: isPaged,
-            hint: 'Two bars of 4/4 is a comfortable line. More bars fit more music '
-                + 'between turns, at the cost of packing the notes tighter. A '
-                + 'fast song is given more of them, so that a staff lasts long '
-                + 'enough to read; the panel shows both numbers when it does, and '
-                + 'moving this slider takes the decision back.',
+            hint: 'Three bars of 4/4 lasts long enough to read at any tempo in '
+                + 'reach — five and a half seconds at 130, three and a half at '
+                + 'the fastest thing you are likely to play — and holds twelve '
+                + 'beats, which stays legible at any width. Fewer turns the page '
+                + 'more often; more packs the notes tighter. Past eight the fret '
+                + 'numbers have under 30 pixels each and stop being separable.',
         },
         {
             key: 'aheadBeats', type: 'num', def: 5, min: 2, max: 24, step: 0.5,
@@ -218,6 +260,28 @@
         },
 
         // ── What is written ──────────────────────────────────────────
+        {
+            key: 'rhythmGrid', type: 'enum', def: 'auto', group: 'marks',
+            label: 'Rhythm ruler',
+            options: [
+                ['auto', 'Subdivided as finely as it fits'],
+                ['beats', 'Whole beats only'],
+                ['off', 'Nothing'],
+            ],
+            hint: 'Note spacing is already proportional to note value, so where '
+                + 'a note sits between two beats IS its rhythm. The ruler gives '
+                + 'the eye something to count against: whole beats through the '
+                + 'staff, and halves and quarters of a beat hanging below it '
+                + 'when there is room for them to be told apart.',
+        },
+        {
+            key: 'showLoop', type: 'bool', def: true, group: 'marks',
+            label: 'The loop',
+            hint: 'When a loop is armed, shade the stretch that repeats and '
+                + 'mark where it turns. Learning a passage is playing it round '
+                + 'and round, and the thing that gets lost is where round '
+                + 'begins.',
+        },
         { key: 'showBars', type: 'bool', def: true, group: 'marks', label: 'Bar numbers' },
         { key: 'showSections', type: 'bool', def: true, group: 'marks', label: 'Section names' },
         { key: 'showChords', type: 'bool', def: true, group: 'marks', label: 'Chord names' },
@@ -339,7 +403,7 @@
                 noteInk: 'string', lineInk: 'string', stringAlpha: 0.42,
                 noteLabel: 'fret',
                 showBars: true, showSections: true, showChords: true,
-                showTech: true, showPM: true,
+                showTech: true, showPM: true, showLoop: true, rhythmGrid: 'auto',
                 showStrings: true, showTempo: true, showLyrics: false,
             },
         },
@@ -348,11 +412,11 @@
             hint: 'Learn the part away from the board: page turns, three staves, '
                 + 'and every note named beside its fret.',
             values: {
-                readMode: 'page', rows: 3, pageBars: 2, board: 'none',
+                readMode: 'page', rows: 3, pageBars: 3, board: 'none',
                 noteFill: 'dark', noteScale: 1.05, noteInk: 'string',
                 lineInk: 'string', stringAlpha: 0.42, noteLabel: 'both',
                 showBars: true, showSections: true, showChords: true,
-                showTech: true, showPM: true,
+                showTech: true, showPM: true, showLoop: true, rhythmGrid: 'auto',
                 showStrings: true, showTempo: true, showLyrics: true,
             },
         },
@@ -361,11 +425,11 @@
             hint: 'Read it like paper: the same page turns in a single ink, with '
                 + 'no colour to lean on.',
             values: {
-                readMode: 'page', rows: 3, pageBars: 2, board: 'none',
+                readMode: 'page', rows: 3, pageBars: 3, board: 'none',
                 noteInk: 'mono', lineInk: 'mono', noteFill: 'dark',
                 noteScale: 1.05, stringAlpha: 0.5, noteLabel: 'both',
                 showBars: true, showSections: true, showChords: true,
-                showTech: true, showPM: true,
+                showTech: true, showPM: true, showLoop: true, rhythmGrid: 'auto',
                 showStrings: true, showTempo: true, showLyrics: true,
             },
         },
@@ -380,7 +444,7 @@
                 noteInk: 'string', lineInk: 'string', stringAlpha: 0.42,
                 noteLabel: 'fret',
                 showBars: false, showSections: false, showChords: false,
-                showTech: false, showPM: false,
+                showTech: false, showPM: false, showLoop: false, rhythmGrid: 'off',
                 showStrings: false, showTempo: false, showLyrics: false,
             },
         },
@@ -394,7 +458,7 @@
                 noteInk: 'string', lineInk: 'mono', stringAlpha: 0.3,
                 noteLabel: 'fret',
                 showBars: true, showSections: false, showChords: false,
-                showTech: false, showPM: false,
+                showTech: false, showPM: false, showLoop: true, rhythmGrid: 'beats',
                 showStrings: true, showTempo: false, showLyrics: false,
             },
         },
@@ -424,6 +488,12 @@
     const COL_MISS = '#f87171';
     const COL_BAR = 'rgba(255,255,255,0.34)';
     const COL_BEAT = 'rgba(255,255,255,0.11)';
+    const COL_HALF = 'rgba(255,255,255,0.075)';
+    const COL_QUARTER = 'rgba(255,255,255,0.042)';
+    // The app's own loop buttons are green; the tab says the same thing in the
+    // same colour rather than inventing a second vocabulary for it.
+    const COL_LOOP = 'rgba(74,222,128,0.85)';
+    const COL_LOOP_FILL = 'rgba(74,222,128,0.10)';
     const COL_PLAYHEAD = 'rgba(255,255,255,0.92)';
     const NOW_WINDOW = 0.09;
     const ROW_GAP_MAX = 26;
@@ -581,6 +651,54 @@
      * a bass chart read by someone holding a six-string guitar must not sprout
      * two bass strings, which is exactly what the naive version did.
      */
+    /**
+     * How finely to rule the beat, given how much room a beat has.
+     *
+     * Halves and quarters of a beat, and no further: a thirty-second is not
+     * something anyone counts off a moving ruler, and drawing one only fills
+     * the space between the notes with lines. A subdivision is only worth
+     * drawing if its ticks are far enough apart to be told from each other —
+     * below that they read as a smear, which is the opposite of counting.
+     */
+    const SUB_MIN_PX = 18;
+
+    function beatDivisions(pxPerBeat) {
+        if (S.rhythmGrid === 'off') return 0;
+        if (S.rhythmGrid !== 'auto') return 1;
+        if (pxPerBeat / 4 >= SUB_MIN_PX) return 4;
+        if (pxPerBeat / 2 >= SUB_MIN_PX) return 2;
+        return 1;
+    }
+
+    /**
+     * The armed loop, in song seconds, or null.
+     *
+     * Read a few times a second and remembered, not asked for on every frame:
+     * the host's own comment records that another plugin polling this surface
+     * at 30 Hz turned each tick into a snapshot serialization and saturated
+     * the inspector. Nothing here needs to know within 250 ms.
+     */
+    let loopCache = { at: -1e9, a: null, b: null };
+
+    function currentLoop() {
+        if (!S.showLoop) return null;
+        const now = (window.performance && performance.now) ? performance.now() : 0;
+        if (now - loopCache.at > 250) {
+            loopCache = { at: now, a: null, b: null };
+            try {
+                const fb = window.feedBack;
+                const l = (fb && typeof fb.getLoop === 'function')
+                    ? fb.getLoop({ reason: 'livetab-draw' }) : null;
+                if (l && typeof l.loopA === 'number' && typeof l.loopB === 'number'
+                    && l.loopB > l.loopA) {
+                    loopCache.a = l.loopA;
+                    loopCache.b = l.loopB;
+                }
+            } catch (_) { /* an older host with no loop API */ }
+        }
+        return (loopCache.a === null) ? null : { a: loopCache.a, b: loopCache.b };
+    }
+
     function staffLines(chartCount, myCount, chartIsBass, myIsBass) {
         const plain = { lines: chartCount, rowOffset: 0 };
         if (!myCount || myCount <= chartCount) return plain;
@@ -606,15 +724,38 @@
     }
 
     /** Bar lines (with their numbers) inside a time range, from the raw grid. */
-    function barsInRange(beats, from, to) {
-        const bars = [];
-        if (!Array.isArray(beats)) return bars;
+    /**
+     * Where the bar lines are.
+     *
+     * A bar line is where the measure NUMBER CHANGES, not merely where a beat
+     * carries one. Charts differ in how much they annotate: most tag only the
+     * downbeat and leave the rest at -1, but one in this library tags every
+     * single beat and repeats the number — 1,1,1,1, 2,2,2,2 — which is a plain
+     * 4/4 spelled out beat by beat.
+     *
+     * Reading "has a number" as "is a bar line" turned that chart into four
+     * bars per bar, and everything downstream inherited it: a two-bar staff
+     * lasted half a second, the automatic fit answered with ten bars, and the
+     * slider's ceiling had to be raised to thirty-two to reach what the fit had
+     * asked for. All of it compensation for this one line. Across the library
+     * the two readings agree on every chart but that one.
+     */
+    function barLines(beats) {
+        const out = [];
+        if (!Array.isArray(beats)) return out;
+        let last = null;
         for (const b of beats) {
             const t = (b && typeof b.time === 'number') ? b.time : null;
-            if (t == null || t < from || t > to) continue;
-            if (b.measure != null && b.measure !== -1) bars.push({ t: t, measure: b.measure });
+            if (t == null || b.measure == null || b.measure === -1) continue;
+            if (b.measure === last) continue;
+            last = b.measure;
+            out.push({ t: t, measure: b.measure });
         }
-        return bars;
+        return out;
+    }
+
+    function barsInRange(beats, from, to) {
+        return barLines(beats).filter((b) => b.t >= from && b.t <= to);
     }
 
     // ─────────────────────────────────────────────────────────────────────
@@ -643,11 +784,6 @@
     // ─────────────────────────────────────────────────────────────────────
 
     let tempoCache = { beats: null, map: null };
-
-    // Whether the bars-per-staff slider has been moved by hand for the song
-    // now loaded. A preset does not count as moving it — a preset is a set of
-    // defaults, and the pace floor is one of the things it defaults to.
-    let pageBarsPinned = false;
 
     function buildTempoMap(beats) {
         const raw = [];
@@ -682,12 +818,7 @@
         }
         if (grid.length < 2) return null;
 
-        const markers = [];
-        for (const b of beats || []) {
-            if (b && typeof b.time === 'number' && b.measure != null && b.measure !== -1) {
-                markers.push(b.time);
-            }
-        }
+        const markers = barLines(beats).map((b) => b.t);
 
         const map = {
             ref: ref, grid: grid, markers: markers,
@@ -830,9 +961,6 @@
         if (tempoCache.beats === beats) return tempoCache.map;
         const map = buildTempoMap(beats);
         tempoCache = { beats: beats, map: map };
-        // A new chart is a new question about how long a staff should be, so
-        // the hand-set override does not follow you from the last song.
-        pageBarsPinned = false;
         return map;
     }
 
@@ -887,8 +1015,6 @@
     // slider takes the decision back completely.
     const PACE_BPM = 120;
     const PACE_MAX = 2;          // never more than twice what was asked for
-    const PAGE_SECONDS = 4;      // the shortest a staff may last
-    const PAGE_MAX_BEATS = 32;   // ...and the most it may hold
 
     function songBPM(map) {
         const bpm = map && map.bpm;
@@ -901,36 +1027,18 @@
     }
 
     /**
-     * How many bars a staff would need in order to last long enough to read.
+     * How many bars one staff holds. The setting, and nothing else.
      *
-     * One chart in this library marks every single beat as a bar, which made a
-     * two-bar staff 1.1 seconds long and turned the page once a second — that
-     * is the report about page turns showing almost no notes.
+     * There were three answers here before this one, and all three were
+     * fighting the same phantom: a chart whose bar lines had been miscounted
+     * four to one. Once a bar line is read as a change of measure number, a
+     * bar is a bar on every chart in the library, three of them last between
+     * three and a half and thirteen seconds depending on the tempo, and every
+     * one of those is long enough to read. So there is no floor to apply, no
+     * automatic choice to explain, and no ceiling that moves from song to song.
      */
-    function barsNeeded(map) {
-        if (!map) return 1;
-        const perBar = Math.max(1, map.beatsPerBar);
-        const needed = Math.ceil(PAGE_SECONDS * songBPM(map) / 60 / perBar);
-        return Math.max(1, Math.min(needed, Math.floor(PAGE_MAX_BEATS / perBar)));
-    }
-
-    /**
-     * How many bars one staff actually holds.
-     *
-     * The floor is a starting point, not a rule. Left alone it raises a fast
-     * song to something readable; the moment the slider is touched it steps
-     * out of the way and the number on the slider is the number on screen.
-     *
-     * Without that it was worse than the problem it solved: at 181 bpm the
-     * floor is four bars, so asking for one, two, three or four all drew four
-     * and the slider did nothing at all in three of its four positions. A
-     * control that ignores you is not a sensible default, whatever it is
-     * defaulting to.
-     */
-    function staffBars(map) {
-        const asked = Math.max(1, S.pageBars);
-        if (!map || pageBarsPinned) return asked;
-        return Math.max(asked, barsNeeded(map));
+    function staffBars() {
+        return Math.max(1, S.pageBars);
     }
 
     /**
@@ -972,7 +1080,7 @@
         // instead looks identical until the chart contains one irregular bar:
         // this song has a two-beat bar in its intro, and from there on every
         // staff began half a bar late and stayed that way.
-        const perPage = staffBars(map);
+        const perPage = staffBars();
         const bar = map.barIndexAt(nowP);
         const index = Math.floor((bar - map.anchorBar) / perPage);
         const shift = pageShift(index);
@@ -1248,17 +1356,104 @@
         // and carry the number. Rhythm should be felt, not read. The ticks are
         // whole beats of the cleaned grid, so a chart that writes four beats
         // 75 ms apart no longer prints four lines on top of each other.
-        ctx.lineWidth = 1;
-        ctx.strokeStyle = COL_BEAT;
-        ctx.beginPath();
+        const divs = beatDivisions(pxPerBeat);
         const firstTick = Math.ceil(view.p0);
         const lastTick = Math.floor(view.p0 + pSpan);
-        for (let p = firstTick; p <= lastTick; p++) {
-            const x = Math.round(padX + (p - view.p0) * pxPerBeat) + 0.5;
-            ctx.moveTo(x, staffTop - 3 * k);
-            ctx.lineTo(x, staffBottom + 3 * k);
+
+        if (divs >= 1) {
+            ctx.lineWidth = 1;
+            ctx.strokeStyle = COL_BEAT;
+            ctx.beginPath();
+            for (let p = firstTick; p <= lastTick; p++) {
+                const x = Math.round(padX + (p - view.p0) * pxPerBeat) + 0.5;
+                ctx.moveTo(x, staffTop - 3 * k);
+                ctx.lineTo(x, staffBottom + 3 * k);
+            }
+            ctx.stroke();
         }
-        ctx.stroke();
+
+        // The subdivisions run the height of the staff, like the beats.
+        // A ruler under the bottom string was the first try and it reads
+        // badly: the note you are placing sits up on the strings, so judging
+        // it against a mark at the foot of the staff means measuring across
+        // the whole thing. A line that passes beside the note needs no
+        // measuring at all — the eye just sees whether it sits on one.
+        //
+        // Which means they have to be quiet enough not to be read as anything.
+        // Two weights, so the half of a beat is findable and the quarter is
+        // only there to be landed on: bar, beat, half, quarter, each fainter
+        // than the last.
+        if (divs >= 2) {
+            for (const pass of [{ every: 2, ink: COL_HALF }, { every: 1, ink: COL_QUARTER }]) {
+                if (divs < pass.every * 2 && pass.every === 2) continue;
+                ctx.lineWidth = 1;
+                ctx.strokeStyle = pass.ink;
+                ctx.beginPath();
+                for (let p = firstTick - 1; p <= lastTick; p++) {
+                    for (let i = 1; i < divs; i++) {
+                        const isHalf = (i * 2) % divs === 0;
+                        if (pass.every === 2 ? !isHalf : isHalf) continue;
+                        const at = p + i / divs;
+                        if (at <= view.p0 || at >= view.p0 + pSpan) continue;
+                        const x = Math.round(padX + (at - view.p0) * pxPerBeat) + 0.5;
+                        ctx.moveTo(x, staffTop - 1 * k);
+                        ctx.lineTo(x, staffBottom + 1 * k);
+                    }
+                }
+                ctx.stroke();
+            }
+        }
+
+        // ── The loop ─────────────────────────────────────────────────
+        // Under the bar lines and under the notes: it is the ground the
+        // passage stands on, not something else written on the staff.
+        const loop = currentLoop();
+        if (loop) {
+            const lx0 = xAt(loop.a);
+            const lx1 = xAt(loop.b);
+            const x0 = Math.max(clipLeft, lx0);
+            const x1 = Math.min(w, lx1);
+            if (x1 > x0) {
+                ctx.fillStyle = COL_LOOP_FILL;
+                ctx.fillRect(x0, staffTop - 6 * k, x1 - x0,
+                    (staffBottom - staffTop) + 12 * k);
+                // Repeat signs, not just uprights. A tinted band is easy to
+                // miss against a dark staff and says nothing about which way
+                // the music goes; the sign every musician already reads — a
+                // heavy bar, a thin one, and two dots facing the music that
+                // repeats — says both at a glance and needs no legend.
+                //
+                // Only the end that is actually on this staff gets one: a loop
+                // running past the edge should look like it continues, not
+                // like it turns there.
+                const top = staffTop - 6 * k;
+                const bot = staffBottom + 6 * k;
+                const dotR = Math.max(1.4, 1.9 * k);
+                const dotY = [staffTop + (staffBottom - staffTop) * 0.34,
+                              staffTop + (staffBottom - staffTop) * 0.66];
+                const repeat = (x, facing) => {
+                    if (x < clipLeft - 6 * k || x > w + 6 * k) return;
+                    const heavy = Math.max(2, 3 * k);
+                    ctx.fillStyle = COL_LOOP;
+                    ctx.fillRect(Math.round(x - (facing > 0 ? 0 : heavy)), top, heavy, bot - top);
+                    ctx.strokeStyle = COL_LOOP;
+                    ctx.lineWidth = Math.max(1, 1.2 * k);
+                    ctx.beginPath();
+                    const thin = Math.round(x + facing * (heavy + 3 * k)) + 0.5;
+                    ctx.moveTo(thin, top);
+                    ctx.lineTo(thin, bot);
+                    ctx.stroke();
+                    ctx.beginPath();
+                    for (const y of dotY) {
+                        ctx.moveTo(x + facing * (heavy + 9 * k) + dotR, y);
+                        ctx.arc(x + facing * (heavy + 9 * k), y, dotR, 0, Math.PI * 2);
+                    }
+                    ctx.fill();
+                };
+                repeat(lx0, 1);
+                repeat(lx1, -1);
+            }
+        }
 
         ctx.lineWidth = Math.max(1, 1.1 * k);
         ctx.strokeStyle = COL_BAR;
@@ -2183,7 +2378,10 @@
             init(providedCanvas, bundle) {
                 host = providedCanvas;
                 lastBundle = bundle || null;
-                if (!host || !host.parentNode) return;
+                if (!host || !host.parentNode) {
+                    emitViz('renderer-failed', { reason: 'no canvas to mount on' });
+                    return;
+                }
 
                 // The board renderer needs a canvas of its own to size against;
                 // the host canvas may be a WebGL surface we must not claim.
@@ -2208,6 +2406,7 @@
                     tabCanvas.remove();
                     boardCanvas = null;
                     tabCanvas = null;
+                    emitViz('renderer-failed', { reason: 'no 2d context' });
                     return;
                 }
 
@@ -2216,6 +2415,7 @@
                 window.addEventListener('resize', onResize);
                 place();
                 attachBoard();
+                emitViz('renderer-ready', {});
             },
             draw(bundle) {
                 if (!mounted || !tabCtx) return;
@@ -2617,7 +2817,7 @@
                         c.input.value = String(S[c.f.key]);
                     } else {
                         c.input.value = String(S[c.f.key]);
-                        if (c.out) c.out.textContent = String(Math.round(S[c.f.key] * 100) / 100);
+                        if (c.out) c.out.textContent = readout(c.f.key);
                     }
                 }
                 // A group with nothing left to show is a heading over a void.
@@ -2811,26 +3011,41 @@
         // telling a lie, and the first thing it costs is the belief that the
         // slider does anything at all. Where the pace correction is changing
         // the number, both are shown: what was asked for, and what is drawn.
-        const map = tempoCache.map;
-        const effective = {
-            pageBars: (S.readMode === 'page') ? staffBars(map) : null,
-            aheadBeats: (S.readMode === 'scroll')
-                ? Math.round(S.aheadBeats * paceFactor(map) * 10) / 10 : null,
-        };
         for (const el of controlPanel.querySelectorAll('[data-out]')) {
             const key = el.getAttribute('data-out');
-            const asked = Math.round(S[key] * 100) / 100;
-            const now = effective[key];
-            el.textContent = String(asked)
-                + ((now != null && now !== asked) ? (' → ' + now) : '')
-                + (el.getAttribute('data-suffix') || '');
+            el.textContent = readout(key) + (el.getAttribute('data-suffix') || '');
         }
         // A row for a setting that does not apply right now is not greyed out,
         // it is gone: the panel is small and read at a glance mid-song.
+        //
+        // Restoring the display it was built with, not the empty string: a
+        // checkbox row is a flex row, and blanking the inline style dropped it
+        // to inline, so it and the slider below shared a line and their labels
+        // ran together.
         for (const el of controlPanel.querySelectorAll('[data-row]')) {
+            if (el.dataset.shown === undefined) el.dataset.shown = el.style.display || '';
             const f = FIELD[el.getAttribute('data-row')];
-            el.style.display = (!f || fieldLive(f)) ? '' : 'none';
+            el.style.display = (!f || fieldLive(f)) ? el.dataset.shown : 'none';
         }
+    }
+
+    /**
+     * What a slider's number says, when the number alone would be a lie.
+     *
+     * "Auto (10)" rather than "0", because 0 bars is not a thing and the ten
+     * is what is on screen; "5 -> 7.5" while the pace correction is widening
+     * the window, because a panel reading 5 next to seven and a half beats of
+     * music is a panel nobody will trust twice.
+     */
+    function readout(key) {
+        const map = tempoCache.map;
+        if (key === 'pageBars') return String(S.pageBars);
+        const asked = Math.round(S[key] * 100) / 100;
+        if (key === 'aheadBeats' && S.readMode === 'scroll') {
+            const now = Math.round(S.aheadBeats * paceFactor(map) * 10) / 10;
+            if (now !== asked) return asked + ' → ' + now;
+        }
+        return String(asked);
     }
 
     /**
@@ -3057,15 +3272,25 @@
             controlPanel.style.display = open ? 'none' : 'block';
             if (!open) controlPanel.scrollTop = 0;
         });
-        document.addEventListener('click', (ev) => {
+        const onDocumentClick = (ev) => {
             if (!controlWrap.contains(ev.target) && !controlPanel.contains(ev.target)) {
                 closePanel();
             }
-        });
+        };
+        document.addEventListener('click', onDocumentClick);
 
         slot.appendChild(controlWrap);
         rebuildBoardButtons();
         watchTheme();
+
+        onTeardown(() => {
+            document.removeEventListener('click', onDocumentClick);
+            if (controlPanel && controlPanel.parentNode) controlPanel.remove();
+            if (controlWrap && controlWrap.parentNode) controlWrap.remove();
+            controlPanel = null;
+            controlWrap = null;
+            controlLabel = null;
+        });
         return true;
     }
 
@@ -3084,10 +3309,15 @@
         const fb = window.feedBack;
         if (themeBound || !fb || typeof fb.on !== 'function') return;
         themeBound = true;
-        fb.on('theme:changed', () => {
+        const onThemeChanged = () => {
             readTheme();
             repaintControls();
             notifyPanels();       // the settings screen's one inline colour
+        };
+        fb.on('theme:changed', onThemeChanged);
+        onTeardown(() => {
+            themeBound = false;
+            if (typeof fb.off === 'function') fb.off('theme:changed', onThemeChanged);
         });
     }
 
@@ -3156,7 +3386,7 @@
                 anchorBar: map.anchorBar,
                 bpm: Math.round(map.bpm),
                 paceFactor: Math.round(paceFactor(map) * 100) / 100,
-                barsPerStaff: staffBars(map),
+                barsPerStaff: staffBars(),
             } : null,
         };
         out.summary = ID + ' ' + VERSION + ' · ' + (out.song.title || 'no song')
@@ -3187,13 +3417,9 @@
         applyPreset(id) {
             const p = PRESETS.find((x) => x.id === id);
             if (!p) return this.get();
-            const out = this.set(p.values);
-            pageBarsPinned = false;      // a preset restores the defaults
-            notifyPanels();
-            return out;
+            return this.set(p.values);
         },
         set(patch) {
-            if (patch && patch.pageBars !== undefined) pageBarsPinned = true;
             S = normalise(Object.assign({}, S, patch || {}));
             saveSettings();
             notifyPanels();
@@ -3227,7 +3453,20 @@
             tries += 1;
             if (mountControls() || tries > 120) clearInterval(timer);
         }, 500);
+        onTeardown(() => clearInterval(timer));
     }
+
+    onTeardown(() => { panels.clear(); });
+
+    window[HOOKS_KEY] = {
+        version: VERSION,
+        teardown() {
+            // Reverse order, so a listener is gone before the node it watches.
+            for (const fn of disposers.splice(0).reverse()) {
+                try { fn(); } catch (_) { /* one failure must not strand the rest */ }
+            }
+        },
+    };
 
     console.log('[' + ID + '] plugin loaded');
 })();

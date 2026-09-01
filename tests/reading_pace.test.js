@@ -25,13 +25,13 @@ const vm = require('node:vm');
 
 const { extractFunction } = require('./test_utils');
 
-const SCREEN_JS = path.join(__dirname, '..', 'livetab', 'screen.js');
+const SCREEN_JS = path.join(__dirname, '..', 'screen.js');
 const SRC = fs.readFileSync(SCREEN_JS, 'utf8');
 
 /** The tuning constants, read from source so the tests cannot drift from it. */
 function constants() {
     const out = {};
-    for (const name of ['PACE_BPM', 'PACE_MAX', 'PAGE_SECONDS', 'PAGE_MAX_BEATS']) {
+    for (const name of ['PACE_BPM', 'PACE_MAX']) {
         const m = new RegExp('const ' + name + ' = ([\\d.]+)').exec(SRC);
         if (!m) throw new Error('constant ' + name + ' not found in screen.js');
         out[name] = Number(m[1]);
@@ -49,9 +49,6 @@ const C = constants();
 function sandbox() {
     const ctx = vm.createContext({
         S: {},
-        // Set by the real api.set() the moment the slider is touched. A global
-        // rather than a script-level binding, so a test can move it.
-        pageBarsPinned: false,
         pageAnim: { index: null, since: 0 },
         performance: { now: () => 1e6 },   // far past any turn: no animation
         window: {},
@@ -66,7 +63,7 @@ function sandbox() {
         'function buildTempoMap(',
         'function songBPM(',
         'function paceFactor(',
-        'function barsNeeded(',
+        'function barLines(',
         'function staffBars(',
         'function pageShift(',
         'function stavesFor(',
@@ -83,7 +80,7 @@ function settings(over) {
         readMode: 'scroll',
         aheadBeats: 5,
         behindBeats: 1.25,
-        pageBars: 2,
+        pageBars: 3,
         rows: 3,
     }, over || {});
 }
@@ -184,92 +181,54 @@ function staffSeconds(ctx, bpm, beatsPerBar) {
     return cur.pSpan * 60 / bpm;
 }
 
-test('the floor steps aside as soon as the slider is moved', () => {
-    // The floor's first version did not, and at 181 bpm — where four bars are
-    // needed — asking for one, two, three or four bars all drew four. Three of
-    // the slider's four positions did nothing, which is what a player reported
-    // as the new switch having locked every other setting.
+test('a bar line is where the measure number changes', () => {
+    // Most charts tag only the downbeat and leave the rest at -1. One in the
+    // library tags EVERY beat and repeats the number — 1,1,1,1, 2,2,2,2 —
+    // which is a plain 4/4 spelled out beat by beat. Reading "carries a
+    // number" as "is a bar line" made that chart four bars per bar, and every
+    // compensation built on top of it (an automatic bar count, a per-song
+    // slider ceiling, a fit switch) existed only to fight this one line.
     const ctx = sandbox();
-    const map = ctx.buildTempoMap(chart(181, 60, 4));
-    assert.ok(ctx.barsNeeded(map) > 1, 'this song is meant to have a floor');
-
-    ctx.pageBarsPinned = false;
-    ctx.S = settings({ readMode: 'page', pageBars: 2 });
-    assert.equal(ctx.staffBars(map), ctx.barsNeeded(map),
-        'left alone, a fast song is given a staff long enough to read');
-
-    ctx.pageBarsPinned = true;
-    const seen = [];
-    for (const pageBars of [1, 2, 3, 4]) {
-        ctx.S = settings({ readMode: 'page', pageBars: pageBars });
-        seen.push(ctx.staffBars(map));
+    const spelledOut = [];
+    for (let i = 0; i < 240; i++) {
+        spelledOut.push({ time: i * 0.5, measure: 1 + Math.floor(i / 4) });
     }
-    assert.deepEqual(seen, [1, 2, 3, 4],
-        'once moved, the slider is the number of bars on screen');
+    const dense = ctx.buildTempoMap(spelledOut);
+    assert.equal(dense.beatsPerBar, 4, 'four beats to the bar, as written');
+    assert.equal(ctx.barLines(spelledOut).length, 60, 'sixty bars, not two hundred and forty');
+
+    // ...and a chart that tags only the downbeat is unchanged by the rule.
+    const terse = [];
+    for (let i = 0; i < 240; i++) {
+        terse.push({ time: i * 0.5, measure: (i % 4 === 0) ? (1 + i / 4) : -1 });
+    }
+    assert.equal(ctx.buildTempoMap(terse).beatsPerBar, 4);
+    assert.equal(ctx.barLines(terse).length, 60);
 });
 
-test('a staff never lasts less than the floor, however the chart is barred', () => {
+test('the staff holds the bars the setting asks for, on every song', () => {
+    // No floor, no automatic choice, no ceiling that moves: three bars lasts
+    // between three and a half and thirteen seconds across the whole tempo
+    // range, and every one of those is long enough to read.
     const ctx = sandbox();
-    ctx.S = settings({ readMode: 'page' });
-    const cases = [
-        [201, 4, 'a fast song in 4/4'],
-        [189, 4, 'a fast song in 4/4'],
-        [110, 1, 'a chart that marks every beat as a bar'],
-        [124, 3, 'a fast song in 3/4'],
-    ];
-    for (const [bpm, beatsPerBar, what] of cases) {
-        const got = staffSeconds(ctx, bpm, beatsPerBar);
-        assert.ok(got >= C.PAGE_SECONDS - 0.01,
-            `${what} at ${bpm}: a staff lasts ${got.toFixed(1)}s, `
-            + `under the ${C.PAGE_SECONDS}s floor`);
-    }
-});
-
-test('a slow song keeps the bars per staff it was asked for', () => {
-    const ctx = sandbox();
-    ctx.S = settings({ readMode: 'page' });
-    for (const bpm of [70, 74, 84, 100]) {
+    for (const bpm of [70, 124, 181, 201]) {
         const map = ctx.buildTempoMap(chart(bpm, 60, 4));
-        assert.equal(ctx.staffBars(map), ctx.S.pageBars,
-            `${bpm} bpm should not be regrouped`);
-    }
-});
-
-test('asking for more bars never gives you fewer', () => {
-    // The first version of this rounded up to a whole MULTIPLE of the setting,
-    // which reads well until the arithmetic lands just past a boundary: at 181
-    // bpm, asking for three bars gave six while asking for four gave four. A
-    // slider that goes backwards when you raise it is worse than one that does
-    // not preserve the phrasing.
-    const ctx = sandbox();
-    for (const bpm of [70, 124, 181, 188, 201]) {
-        let last = 0;
-        for (const pageBars of [1, 2, 3, 4]) {
+        for (const pageBars of [1, 2, 3, 4, 8]) {
             ctx.S = settings({ readMode: 'page', pageBars: pageBars });
-            const got = ctx.staffBars(ctx.buildTempoMap(chart(bpm, 60, 4)));
-            assert.equal(got, Math.round(got), 'a staff holds whole bars');
-            assert.ok(got >= pageBars, 'never fewer bars than were asked for');
-            assert.ok(got >= last,
-                `at ${bpm} bpm, ${pageBars} bars gives ${got} after `
-                + `${pageBars - 1} gave ${last}`);
-            last = got;
+            assert.equal(ctx.staffBars(), pageBars);
+            const seconds = pageBars * map.beatsPerBar * 60 / bpm;
+            if (pageBars === 3) {
+                assert.ok(seconds >= 3.5,
+                    `three bars at ${bpm} bpm lasts only ${seconds.toFixed(1)}s`);
+            }
         }
     }
 });
 
-test('a staff never grows past the beats it can hold legibly', () => {
+test('every staff starts on a bar line', () => {
     const ctx = sandbox();
-    ctx.S = settings({ readMode: 'page', pageBars: 4 });
-    const map = ctx.buildTempoMap(chart(240, 60, 4));
-    assert.ok(ctx.staffBars(map) * map.beatsPerBar <= C.PAGE_MAX_BEATS);
-});
-
-test('regrouped staves still start on a bar line', () => {
-    const ctx = sandbox();
-    ctx.S = settings({ readMode: 'page' });
+    ctx.S = settings({ readMode: 'page', pageBars: 3 });
     const map = ctx.buildTempoMap(chart(201, 60, 4));
-    assert.ok(ctx.staffBars(map) > ctx.S.pageBars,
-        'this song is meant to be regrouped');
     const bars = new Set(map.barPos.map((p) => Math.round(p * 100) / 100));
     for (const st of ctx.stavesFor(map, 30, 3)) {
         assert.ok(bars.has(Math.round(st.p0 * 100) / 100),

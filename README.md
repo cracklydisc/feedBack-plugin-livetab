@@ -24,23 +24,43 @@ does something odd on one of yours, the settings panel has a **Copy
 diagnostics** button — paste what it gives you into the bug report and the chart
 can be diagnosed without anyone having to own it.
 
-What changed between versions is in the [changelog](livetab/CHANGELOG.md).
+What changed between versions is in the [changelog](CHANGELOG.md).
 
 ---
 
 ## Install
 
-1. Download this repository (green **Code** button → *Download ZIP*, or clone it).
-2. Copy the **`livetab`** folder into your fee[dB]ack plugins directory:
+Your fee[dB]ack plugins directory is:
 
-   | | |
-   |---|---|
-   | Windows | `…\Feedback\resources\slopsmith\plugins\` |
-   | Linux / macOS | the `resources/slopsmith/plugins/` folder inside your install |
+| | |
+|---|---|
+| Windows | `…\Feedback\resources\slopsmith\plugins\` |
+| Linux / macOS | the `resources/slopsmith/plugins/` folder inside your install |
 
-   You should end up with `…/plugins/livetab/plugin.json`.
-3. Restart fee[dB]ack.
-4. Start a song and pick **Live Tab** in the visualization picker.
+### With git — recommended
+
+```
+cd …/plugins
+git clone https://github.com/cracklydisc/feedBack-plugin-livetab.git livetab
+```
+
+Then restart fee[dB]ack, start a song, and pick **Live Tab** in the
+visualization picker.
+
+Installed this way the app can update it for you: **Plugins → Check for
+Updates** finds new versions and installs them with one click. Installed any
+other way it cannot, and you will only hear about a new version if you happen
+to see it announced.
+
+### Without git
+
+Green **Code** button → *Download ZIP*, unpack it, and rename the unpacked
+folder to `livetab` inside your plugins directory. You should end up with
+`…/plugins/livetab/plugin.json`. Restart fee[dB]ack.
+
+Updating means downloading again and replacing the folder.
+
+---
 
 Requires fee[dB]ack **0.3.0-alpha.1** or newer (it uses the v3 player's plugin
 control slot and the `/api/plugins` list). On an older build the tab still
@@ -94,6 +114,13 @@ tab advances at one beat per beat, locked to the music rather than to the clock.
   is one `P.M.` with a dashed span; accents, taps and fret-hand mutes share a
   row above the head; a linked note is parenthesised, because it is held rather
   than struck again.
+- **Rhythm** — the staff is ruled at whole beats, and at halves and quarters of
+  a beat where there is room to tell them apart. Spacing is already
+  proportional to note value, so this is simply something for the eye to count
+  against; each weight is fainter than the last, so the lines are there to be
+  landed on rather than read.
+- **The loop** — arm one and the stretch that repeats is shaded on the staff,
+  with the point it turns marked, in the same green as the app's loop buttons.
 - **Around the staff** — bar numbers, section names, chord names and the tempo,
   each in a lane of its own so a chord change on a downbeat never prints through
   a bar number. The open note of every string runs down the left margin, read
