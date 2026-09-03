@@ -93,6 +93,21 @@ nine versions nobody could install. The release after 0.28.0 is this one.
   being set after the measurement — so a 38px digit was corrected by 2.8px
   instead of 12. Every isolated test passed, because a scratch canvas starts
   clean.
+- **A toggle never showed its on state.** The switch's DOM order is input,
+  text, track — the label was deliberately moved in front of the switch — while
+  three rules still read `input:checked + .fbk-toggle-track`, the *immediately*
+  next sibling. The immediately next sibling is the text, so those rules
+  matched nothing: clicking set the value and the switch stayed dark. The line
+  below it used `~`, so the label brightened while the track did not — half the
+  control saying one thing and half the other. Fixed in the kit with a test
+  that derives the child order from the builder and checks every combinator can
+  still reach across it.
+- **The settings page no longer explains how settings pages work.** "Changes
+  apply live · saved per song" sat under the title on every sync; in a page of
+  options that is a description of every page of options. The subtitle now
+  names what the options apply to — artist, song, arrangement — which shows the
+  "saved per song" part instead of asserting it, and the footer line is quiet
+  unless it has news (the tab being hidden).
 - **A partial bend was the illegible one.** `½` and `¼` are single
   typographic glyphs drawn a little over half height inside the em, so beside
   `full` — four letters at full size — a semitone read at half the scale.

@@ -3777,7 +3777,29 @@ import * as c from './src/kit/controls.js';
         const panel = {
             root: root,
             sync() {
-                sub.textContent = 'Changes apply live · saved per song';
+                /*
+                 * IL SOTTOTITOLO DICE A CHE COSA SI APPLICA, non come
+                 * funziona.
+                 *
+                 * Diceva "Changes apply live · saved per song" fisso. In una
+                 * pagina di impostazioni quella e' la descrizione di come sono
+                 * fatte tutte le pagine di impostazioni: occupa la riga sotto
+                 * al titolo e non dice niente di questa. Detto esplicitamente
+                 * che qui non serve.
+                 *
+                 * Al suo posto quello che il disegno mette lì: artista, brano,
+                 * arrangiamento. Dice per chi valgono queste impostazioni —
+                 * cioe' il fatto "salvate per canzone", mostrato invece che
+                 * dichiarato — e sopra un pannello aperto sul gioco e' anche il
+                 * modo di sapere su cosa sei rimasto. Senza canzone la riga
+                 * sparisce, che e' meglio di una frase generica.
+                 */
+                const cs = (window.feedBack && window.feedBack.currentSong) || {};
+                const bits = [cs.artist, cs.title,
+                    cs.arrangementSmartName || cs.arrangement]
+                    .map((x) => String(x || '').trim()).filter(Boolean);
+                sub.textContent = bits.join(' · ');
+                sub.hidden = !bits.length;
 
                 // ── the preset row ───────────────────────────────────────
                 const active = activePresetId();
@@ -3829,11 +3851,29 @@ import * as c from './src/kit/controls.js';
                     r.rack.setAside(any ? (groupAside(r.g.id) || '') : '');
                 }
 
+                /*
+                 * NIENTE DA DIRE, NIENTE SCRITTO.
+                 *
+                 * Diceva "Changes apply live, and are saved per song" in
+                 * permanenza. In un pannello che si apre sopra il gioco quella
+                 * frase risponde a una domanda che uno si fa davvero — "sto
+                 * cambiando la canzone o il programma?" — ma in una PAGINA di
+                 * impostazioni e' come sono fatte tutte le pagine di
+                 * impostazioni, quindi e' una riga che occupa il piede senza
+                 * aggiungere niente. Detto esplicitamente: qui non serve.
+                 *
+                 * Resta il caso in cui c'e' una notizia: la tab nascosta e' una
+                 * cosa che il lettore non vede da nessun'altra parte in questa
+                 * pagina, e senza quella riga non saprebbe perche' il giocatore
+                 * e' tutto board. `statusLine.set(null)` si nasconde da sola,
+                 * quindi il piede si chiude quando non c'e' niente.
+                 */
+                const hidden = !S.enabled && fieldLive(FIELD.enabled);
                 status.set(
-                    (!S.enabled && fieldLive(FIELD.enabled)) ? 'warn' : 'ok',
-                    (!S.enabled && fieldLive(FIELD.enabled))
+                    hidden ? 'warn' : null,
+                    hidden
                         ? 'The tab is currently hidden — the board above has the whole player.'
-                        : 'Changes apply live, and are saved per song.',
+                        : null,
                 );
             },
         };

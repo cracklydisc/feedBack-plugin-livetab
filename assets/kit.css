@@ -988,18 +988,38 @@
                 background var(--fbk-motion, 140ms ease);
 }
 
-.fbk-toggle input:checked + .fbk-toggle-track {
+/*
+ * `~`, NON `+`: fra l'input e il binario c'e' il testo.
+ *
+ * L'ordine nel DOM e' input, testo, binario — cambiato quando l'etichetta e'
+ * passata davanti all'interruttore — e questi tre selettori sono rimasti
+ * `input:checked + .fbk-toggle-track`, cioe' "il fratello IMMEDIATAMENTE
+ * successivo". Il fratello immediatamente successivo e' `.fbk-toggle-text`,
+ * quindi la regola non ha piu' corrisposto a niente: l'interruttore non ha MAI
+ * mostrato lo stato acceso.
+ *
+ * Segnalato due volte — "lo switch non cambia stato", "si disattivano e basta"
+ * — e la prima volta ho corretto altro, perche' il valore cambiava davvero e
+ * il difetto era solo nel disegno dello stato. La riga sotto (`~
+ * .fbk-toggle-text`) funzionava, quindi il TESTO si schiariva da acceso mentre
+ * il binario restava spento: metа' del controllo diceva una cosa e metа'
+ * l'altra.
+ *
+ * `~` vale a qualunque distanza, quindi non si rompe se domani si aggiunge un
+ * nodo in mezzo — che e' esattamente quello che e' successo.
+ */
+.fbk-toggle input:checked ~ .fbk-toggle-track {
     background: var(--fbk-lit-fill, rgb(var(--fbk-accent, 41 168 255)));
     border-color: rgb(var(--fbk-accent-hi, 96 194 255));
     box-shadow: var(--fbk-lit-halo, none);
 }
 
-.fbk-toggle input:checked + .fbk-toggle-track::after {
+.fbk-toggle input:checked ~ .fbk-toggle-track::after {
     transform: translateX(15px);
     background: var(--fbk-lit-on, rgb(var(--fbk-on-accent, 5 7 12)));
 }
 
-.fbk-toggle input:focus-visible + .fbk-toggle-track {
+.fbk-toggle input:focus-visible ~ .fbk-toggle-track {
     outline: 2px solid rgb(var(--fbk-focus, 41 168 255));
     outline-offset: 2px;
 }
