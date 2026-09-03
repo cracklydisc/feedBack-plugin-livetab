@@ -2656,6 +2656,33 @@ import * as c from './src/kit/controls.js';
         return (span <= STEPPER_MAX_STEPS) ? 'stepper' : 'slider';
     }
 
+    /**
+     * What a numeric setting reads as, including the number the pace correction
+     * turns it into.
+     *
+     * RESTORED: this was deleted along with the hand-built `controlSlider` that
+     * used to sit beside it, and `readoutParts` below calls it — so the sync
+     * threw a ReferenceError on the first slider it reached. Both panels looked
+     * healthy because the throw only happens in SCROLLING mode: page turns hide
+     * the ahead slider, so the line was never reached and every symptom was a
+     * value quietly not arriving.
+     *
+     * A slider that reads 2 while four bars are on screen is a panel telling a
+     * lie, and the first thing it costs is the belief that the slider does
+     * anything at all. Where the pace correction is changing the number, both
+     * are shown: what was asked for, and what is drawn.
+     */
+    function readout(key) {
+        const map = tempoCache.map;
+        if (key === 'pageBars') return String(S.pageBars);
+        const asked = Math.round(S[key] * 100) / 100;
+        if (key === 'aheadBeats' && S.readMode === 'scroll') {
+            const now = Math.round(S.aheadBeats * paceFactor(map) * 10) / 10;
+            if (now !== asked) return asked + ' → ' + now;
+        }
+        return String(asked);
+    }
+
     /** The value, and its derived companion, as two things rather than one string. */
     function readoutParts(key) {
         const whole = readout(key);

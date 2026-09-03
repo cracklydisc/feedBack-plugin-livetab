@@ -286,3 +286,40 @@ test('holes in the grid are filled in beats rather than swallowed', () => {
 // The exception is the half this repository got wrong first — it cancelled the
 // default for inputs too and Chromium happened to survive it. Both assertions
 // went to the kit with the code, so every consumer gets them instead of one.
+
+// ── Every helper the sync paths call must exist ─────────────────────────────
+//
+// `readout` was deleted along with the hand-built `controlSlider` that used to
+// sit beside it, and `readoutParts` calls it — so a sync threw a
+// ReferenceError on the first slider it reached. BOTH panels looked healthy,
+// because the throw only happens in SCROLLING mode: page turns hide the ahead
+// slider, so the line was never reached and every symptom was a value quietly
+// not arriving.
+//
+// That is the shape worth guarding: a helper removed as collateral, on a branch
+// the eye was not on. The list is explicit rather than derived because a
+// derived one needs an allowlist of every global this file touches, and a list
+// of ten names that the two sync paths actually depend on is both honest and
+// cheap to keep.
+
+test('the sync paths do not call a helper that was deleted', () => {
+    const needed = [
+        'readout',        // the number a slider reads, pace correction included
+        'readoutParts',   // that number split from its derived companion
+        'paceFactor',     // what widens the window above a moderate tempo
+        'groupAside',     // a rack's derived header reading
+        'fieldLive',      // whether a field's `when` says it applies
+        'fieldOptions',   // an enum's options, board list included
+        'boardOptions',   // the boards the app has installed
+        'activePresetId', // which preset's values still all hold
+        'shortOption',    // the name out of a schema label's sentence
+        'headGlyph',      // the drawn note-head options
+        'controlKind',    // which control a value's shape earns
+        'diagnostics',    // what the footer copies
+    ];
+    /* Substring rather than a regex: the escaping is the part that goes wrong,
+       and `function name(` is already unambiguous in this file. */
+    const missing = needed.filter((name) => !SRC.includes('function ' + name + '(')
+        && !SRC.includes('const ' + name + ' ='));
+    assert.deepEqual(missing, [], 'called by a sync path but not defined: ' + missing.join(', '));
+});
