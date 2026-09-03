@@ -2825,12 +2825,46 @@
  * interruttore — sta nudo sul fondo, che e' come lo disegna il riferimento.
  */
 .fbk-field {
-    display: flex;
+    /*
+     * DUE COLONNE, non una fila.
+     *
+     * Era `display: flex`: l'etichetta larga quanto il suo testo e il
+     * controllo subito dopo. Su una schermata di impostazioni vere le
+     * etichette sono lunghe quanto vengono — FRET NUMBERS, STRING CONTRAST,
+     * WHAT THE NOTE HEAD SAYS — quindi ogni controllo partiva da un'ascissa
+     * diversa: misurate NOVE partenze diverse in una sola pagina (334, 415,
+     * 427, 433, 441, 442, 459, 470, 507). Slider e segmented che iniziano
+     * ognuno da un punto suo non si leggono come una colonna di scelte, si
+     * leggono come disordine. Segnalato esattamente cosi'.
+     *
+     * Con una colonna fissa per il nome, il controllo comincia sempre allo
+     * stesso posto e l'occhio scende in verticale invece di rincorrere il
+     * bordo sinistro.
+     *
+     * La colonna e' `--fbk-label-w`, che il kit aveva giа' — DESIGN §1.4, "una
+     * sola colonna per le etichette" — solo che `.fbk-field-label` non la
+     * usava: il componente e' arrivato dopo la regola e non l'ha ereditata.
+     * Non serviva un token nuovo, serviva usare quello. Il valore e' 62px, la
+     * misura per un pannello da 336; un foglio largo il doppio la rialza da
+     * se' (`.fbk-sheet`, piu' sotto), che e' il motivo per cui e' un token.
+     */
+    display: grid;
+    grid-template-columns: var(--fbk-label-w, 62px) minmax(0, 1fr);
     align-items: center;
     gap: var(--fbk-s-4, 8px);
     box-sizing: border-box;
     min-height: var(--fbk-h-md, 40px);
 }
+
+/*
+ * Un controllo che porta il nome DENTRO di se' — un interruttore, uno stepper
+ * — non ha una prima colonna da riempire, quindi prende la riga intera e il
+ * suo testo comincia dove cominciano le etichette. Due casi perche' ci sono
+ * due modi di non avere etichetta: non chiederla (`:only-child`) o svuotarla
+ * dopo (`setLabel('')`, che e' come lo fanno i pannelli).
+ */
+.fbk-field > .fbk-field-body:only-child,
+.fbk-field > .fbk-field-label:empty + .fbk-field-body { grid-column: 1 / -1; }
 
 /* A field holding a control that brings its own height — a segmented row —
    gives up its padding so the control's own 40px is the row's height. */
@@ -2845,24 +2879,36 @@
  * shrinking the label until it stops competing, which is the other way to fix
  * it and costs legibility.
  */
+/*
+ * Il filo divisorio sta al bordo DESTRO della colonna, sempre allo stesso
+ * posto: attaccato al testo si spostava con la lunghezza del nome, e un
+ * divisorio che si sposta non divide. `margin-left: auto` lo manda in fondo,
+ * perche' l'etichetta e' una riga flex.
+ */
 .fbk-field-label::after {
     content: '';
-    display: inline-block;
+    flex: 0 0 auto;
     width: var(--fbk-hairline, 1px);
     height: 14px;
-    margin-left: var(--fbk-s-5, 10px);
-    vertical-align: -3px;
+    margin-left: auto;
     background: rgb(var(--fbk-border, 42 46 58));
 }
 
 .fbk-field-label {
-    flex: 0 0 auto;
+    display: flex;
+    align-items: center;
+    min-width: 0;
     font: var(--fbk-t-field, 600 9px/1.2 sans-serif);
     letter-spacing: var(--fbk-t-field-track, 0.12em);
     text-transform: uppercase;
-    white-space: nowrap;
+    /* Un nome piu' largo della colonna va a capo: le righe sono alte almeno
+       40px, quindi due righe da 9px ci stanno. §1.4 dice di promuoverlo a
+       etichetta a blocco invece di allargare la colonna per una riga sola —
+       questo e' il ripiego finche' non lo si accorcia. */
+    overflow-wrap: break-word;
     color: rgb(var(--fbk-dim, 138 160 200));
     padding-left: var(--fbk-s-3, 6px);
+    padding-right: var(--fbk-s-3, 6px);
 }
 
 .fbk-field-body {
@@ -2916,12 +2962,32 @@
 }
 
 /*
- * Uno stepper e un interruttore prendono la riga intera: `− ETICHETTA valore +`
- * con i due tasti agli estremi si legge come un pezzo di hardware, mentre
- * stretto a 129px in una riga da 485 sembrava un controllo troncato a meta'.
- * Chiesto: che occupino tutta la riga.
+ * LO STESSO STEPPER QUI E NEL PANNELLO.
+ *
+ * Nel pannello due stepper si dividono una riga e vengono circa 170px; in una
+ * pagina di impostazioni la riga e' larga il triplo, quindi tirandolo a tutta
+ * larghezza diventava 532px: `−` all'estremo sinistro, `+` all'estremo destro
+ * e l'etichetta a galleggiare nel mezzo. Stesso DOM e stesso CSS, e sembrava
+ * un altro controllo — chiesto perche' non usiamo la stessa ui, dato che lo
+ * stepper esiste giа'.
+ *
+ * Il tetto e' quello: cresce fino alla misura che ha nel pannello e li' si
+ * ferma. Un controllo di hardware ha una taglia, non si adatta alla stanza.
  */
-.fbk-field > .fbk-field-body > .fbk-stepper,
+.fbk-field > .fbk-field-body > .fbk-stepper {
+    flex: 1 1 auto;
+    justify-content: space-between;
+    /* Due tasti da `h-md` piu' il valore in mezzo: la taglia che ha nel
+       pannello, espressa con la misura da cui e' fatto. */
+    max-width: calc(var(--fbk-h-md, 40px) * 4.5);
+}
+
+/*
+ * L'interruttore invece SI' prende la riga: il nome a sinistra e la levetta
+ * all'estremo destro e' la forma di una riga di impostazioni, ed e' anche come
+ * sta nelle intestazioni dei rack, dove il bordo del pannello e' il suo
+ * estremo destro.
+ */
 .fbk-field > .fbk-field-body > .fbk-toggle {
     flex: 1 1 auto;
     justify-content: space-between;
@@ -3116,6 +3182,17 @@
  * belong in a panel (see the withdrawal note above; the report behind it was
  * about a HUD, not about this).
  */
+
+/*
+ * Il foglio alza la colonna delle etichette.
+ *
+ * 62px e' la misura di un pannello da 336, dove i nomi sono corti per forza.
+ * Una schermata di impostazioni e' larga il doppio e i nomi sono quelli veri —
+ * RHYTHM RULER, STRING CONTRAST, WHAT THE NOTE HEAD SAYS — quindi la colonna
+ * cresce con la stanza. E' l'unica cosa che cambia: la regola resta "una sola
+ * colonna, mai allargata per una riga".
+ */
+.fbk-sheet { --fbk-label-w: 168px; }
 
 .fbk-sheet {
     box-sizing: border-box;

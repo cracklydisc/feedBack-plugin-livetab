@@ -107,6 +107,17 @@ nine versions nobody could install. The release after 0.28.0 is this one.
   second title telling the reader they had entered somewhere new when they had
   not. A panel that opens over the game needs to say what it is, because it
   arrives with no frame; here the frame is the page.
+- **Every control starts at the same place.** The field row sized its label to
+  its own text, so with the real labels — FRET NUMBERS, STRING CONTRAST, WHAT
+  THE NOTE HEAD SAYS — each control began at a different x: nine of them on one
+  page. The kit already had the rule for this (§1.4, one label column) and the
+  field component had never used it; it does now, and the sheet takes a wider
+  column than a panel because its rows are twice as wide. Two start positions
+  left: the label column, and the controls that carry their own name.
+- **A stepper is the same control here as in the panel.** Stretched to a
+  settings row it became 532px wide, with the `−` and `+` at opposite ends and
+  the label adrift between them — the same markup reading as a different
+  control. It now grows to the size it has in the panel and stops.
 - **A control's boundary is its own again.** The row drew a well with a stroke
   and stripped whatever it contained, on a one-signal-per-boundary rule applied
   downward: inside a row a stepper became a floating `−` and `+` and a
