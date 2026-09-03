@@ -3627,16 +3627,21 @@ import * as c from './src/kit/controls.js';
         root.textContent = '';
         root.className = 'fbk-sheet';
 
-        // ── the head: what this is, and what it is looking at ────────────
-        const head = c.el('div', 'fbk-sheet-head');
-        const stack = c.el('div', 'fbk-head-stack');
-        stack.appendChild(c.el('span', 'fbk-title', 'Tab view'));
-        const sub = c.el('span', 'fbk-subtitle');
-        stack.appendChild(sub);
-        head.appendChild(c.el('span', 'fbk-rack-dot'));
-        head.appendChild(stack);
-        root.appendChild(head);
-
+        /*
+         * NIENTE INTESTAZIONE: ce l'ha giа' la pagina.
+         *
+         * C'era "TAB VIEW" con il suo sottotitolo, cioe' un titolo dentro una
+         * pagina che si chiama giа' Settings e che elenca i plugin per nome.
+         * Un pannello che si apre sopra il gioco ha bisogno di dire che cos'e'
+         * — arriva da solo, senza cornice — ma qui la cornice c'e', e un
+         * secondo titolo dice al lettore che e' entrato in un posto nuovo
+         * quando non e' vero. Chiesto di togliersela.
+         *
+         * Se ne va anche il sottotitolo con brano e arrangiamento: era la riga
+         * sotto quel titolo, non un'informazione a se' stante, e restare da
+         * sola in cima a una pagina l'avrebbe fatta sembrare un'altra
+         * intestazione. Il paragrafo qui sotto dice giа' di che si tratta.
+         */
         const intro = c.el('p', 'fbk-note',
             'A tablature you can read while it moves, with any note board hosted '
             + 'above it. Hit and miss come from the same judgment the board uses, '
@@ -3777,30 +3782,6 @@ import * as c from './src/kit/controls.js';
         const panel = {
             root: root,
             sync() {
-                /*
-                 * IL SOTTOTITOLO DICE A CHE COSA SI APPLICA, non come
-                 * funziona.
-                 *
-                 * Diceva "Changes apply live · saved per song" fisso. In una
-                 * pagina di impostazioni quella e' la descrizione di come sono
-                 * fatte tutte le pagine di impostazioni: occupa la riga sotto
-                 * al titolo e non dice niente di questa. Detto esplicitamente
-                 * che qui non serve.
-                 *
-                 * Al suo posto quello che il disegno mette lì: artista, brano,
-                 * arrangiamento. Dice per chi valgono queste impostazioni —
-                 * cioe' il fatto "salvate per canzone", mostrato invece che
-                 * dichiarato — e sopra un pannello aperto sul gioco e' anche il
-                 * modo di sapere su cosa sei rimasto. Senza canzone la riga
-                 * sparisce, che e' meglio di una frase generica.
-                 */
-                const cs = (window.feedBack && window.feedBack.currentSong) || {};
-                const bits = [cs.artist, cs.title,
-                    cs.arrangementSmartName || cs.arrangement]
-                    .map((x) => String(x || '').trim()).filter(Boolean);
-                sub.textContent = bits.join(' · ');
-                sub.hidden = !bits.length;
-
                 // ── the preset row ───────────────────────────────────────
                 const active = activePresetId();
                 if (active) lastPresetId = active;

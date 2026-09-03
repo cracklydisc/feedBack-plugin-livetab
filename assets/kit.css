@@ -2805,16 +2805,31 @@
  * line up — because the WELLS are the thing being aligned.
  * ═══════════════════════════════════════════════════════════════════════ */
 
+/*
+ * LA RIGA NON E' UN CONTENITORE: il confine e' del CONTROLLO.
+ *
+ * Era il contrario. La riga disegnava un pozzo con il suo filo, e la regola
+ * qui sotto lo toglieva a quello che conteneva — "un solo segno per confine,
+ * imposto verso il basso". La logica reggeva, il risultato no: dentro una riga
+ * lo stepper diventava due glifi `−` e `+` sospesi nel vuoto e il segmented
+ * due parole, di cui una accesa. Segnalato come "gli stepper non hanno la ui
+ * completa", ed era esatto — non avevano nessuna ui.
+ *
+ * Il disegno di riferimento mette il confine dove sta il controllo: lo slider
+ * e' una riga nuda con la sua scanalatura, la select e' una scatola, il
+ * segmented e' un binario, lo stepper e' un pozzo con `−` e `+` dentro.
+ * L'etichetta sta fuori, a sinistra. Nessuna riga incorniciata.
+ *
+ * Quindi la riga torna a essere solo una riga: allinea l'etichetta e il
+ * controllo, e chi ha una forma se la tiene. Chi non ce l'ha — uno slider, un
+ * interruttore — sta nudo sul fondo, che e' come lo disegna il riferimento.
+ */
 .fbk-field {
     display: flex;
     align-items: center;
     gap: var(--fbk-s-4, 8px);
     box-sizing: border-box;
     min-height: var(--fbk-h-md, 40px);
-    padding: var(--fbk-s-1, 2px) var(--fbk-s-5, 10px);
-    border-radius: var(--fbk-radius-well, 12px);
-    border: var(--fbk-hairline, 1px) solid rgb(var(--fbk-border, 42 46 58));
-    background: rgb(var(--fbk-bg, 5 7 12));
 }
 
 /* A field holding a control that brings its own height — a segmented row —
@@ -2874,12 +2889,9 @@
 }
 
 /*
- * ONE SIGNAL PER BOUNDARY (§18), enforced downward.
- *
- * A segmented control has its own track and border; inside a field that is a
- * boundary drawn twice, and two nested strokes 2px apart is exactly what makes
- * a layout read as boxes in boxes. The field is the boundary now, so the
- * things it contains give theirs up.
+ * `.fbk-seg-wrap` gia' rinuncia al proprio pozzo da se' (§sopra), perche' i
+ * chip portano la forma ognuno per conto suo. Non serve una regola per la
+ * riga: la riga non disegna piu' niente da cui distinguersi.
  */
 /*
  * CONCENTRIC CORNERS.
@@ -2903,13 +2915,29 @@
         var(--fbk-radius-sm, 8px);
 }
 
-.fbk-field .fbk-seg,
-.fbk-field .fbk-stepper {
-    border: 0;
-    background: none;
-    box-shadow: none;
-    padding: 0;
+/*
+ * Uno stepper e un interruttore prendono la riga intera: `− ETICHETTA valore +`
+ * con i due tasti agli estremi si legge come un pezzo di hardware, mentre
+ * stretto a 129px in una riga da 485 sembrava un controllo troncato a meta'.
+ * Chiesto: che occupino tutta la riga.
+ */
+.fbk-field > .fbk-field-body > .fbk-stepper,
+.fbk-field > .fbk-field-body > .fbk-toggle {
+    flex: 1 1 auto;
+    justify-content: space-between;
 }
+
+.fbk-field > .fbk-field-body > .fbk-toggle > .fbk-toggle-text { flex: 1 1 auto; }
+
+/*
+ * Un'etichetta vuota non e' un'etichetta: e' il suo divisorio.
+ *
+ * `.fbk-field-label::after` disegna il filo verticale fra il nome e il
+ * controllo, quindi con il nome vuoto — il caso dello stepper, che l'etichetta
+ * la porta dentro di se' — restava solo il trattino verticale sospeso a
+ * sinistra della riga. Era il `|` che si vedeva prima del `−`.
+ */
+.fbk-field-label:empty { display: none; }
 
 /*
  * A STEPPER IS ITSELF A WELL.

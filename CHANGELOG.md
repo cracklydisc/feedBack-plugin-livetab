@@ -102,6 +102,19 @@ nine versions nobody could install. The release after 0.28.0 is this one.
   control saying one thing and half the other. Fixed in the kit with a test
   that derives the child order from the builder and checks every combinator can
   still reach across it.
+- **The settings page has no header of its own.** "Tab view" and its subtitle
+  sat inside a page already titled Settings that lists the plugins by name — a
+  second title telling the reader they had entered somewhere new when they had
+  not. A panel that opens over the game needs to say what it is, because it
+  arrives with no frame; here the frame is the page.
+- **A control's boundary is its own again.** The row drew a well with a stroke
+  and stripped whatever it contained, on a one-signal-per-boundary rule applied
+  downward: inside a row a stepper became a floating `−` and `+` and a
+  segmented became two words. The design puts the boundary on the control —
+  the slider is a bare row with its groove, the select is a box, the stepper is
+  a well with its buttons inside — so the row is a row again, and a stepper or
+  a toggle takes its whole width. An empty field label no longer prints the
+  divider it was drawn to carry.
 - **The settings page no longer explains how settings pages work.** "Changes
   apply live · saved per song" sat under the title on every sync; in a page of
   options that is a description of every page of options. The subtitle now
