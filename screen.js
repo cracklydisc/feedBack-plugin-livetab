@@ -892,6 +892,145 @@ import * as c from './src/kit/controls.js';
         return Math.max(8, r * 0.56);
     }
 
+    /* Mezza altezza della carta dell'accordo: nome e forma su una riga sola. */
+    const CHORD_CARD_HALF = 13;
+
+    /**
+     * LA FORMA DELL'ACCORDO, una casella per corda.
+     *
+     * La colonna piu' a SINISTRA e' la corda piu' grave, perche' e' cosi' che
+     * si leggono le griglie degli accordi da sempre; il chart invece indicizza
+     * da 0 = cantino, quindi l'ordine va girato qui e non nel disegno.
+     *
+     * Ogni casella porta il tasto e, quando il chart lo sa, il dito in piccolo
+     * di fianco — `2¹` si legge "secondo tasto, primo dito" senza legenda,
+     * mentre due righe di cifre l'una sotto l'altra ne avrebbero avuto
+     * bisogno. Il dito manca spesso: le sorgenti XML lo portano, gli import
+     * Guitar Pro emettono tutti -1, e in quel caso la casella dice solo il
+     * tasto invece di dire una bugia.
+     */
+    function chordCells(tpl, count) {
+        if (!tpl || !Array.isArray(tpl.frets)) return null;
+        const n = Math.max(4, Math.min(8, count || tpl.frets.length || 6));
+        const fingers = Array.isArray(tpl.fingers) ? tpl.fingers : [];
+        const cells = [];
+        let played = 0;
+        for (let i = n - 1; i >= 0; i--) {
+            const f = tpl.frets[i];
+            if (typeof f !== 'number' || f < 0) { cells.push({ fret: '×', finger: 0 }); continue; }
+            const fg = fingers[i];
+            cells.push({
+                fret: String(f),
+                finger: (typeof fg === 'number' && fg > 0 && f > 0) ? fg : 0,
+            });
+            played += 1;
+        }
+        return played ? cells : null;
+    }
+
+    /**
+     * QUALE ACCORDO E', in alto e senza condizioni.
+     *
+     * Era un nome da 11px senza sfondo, saltato appena la corsia era occupata:
+     * la meta' delle volte non c'era, e quando c'era spariva sopra una linea
+     * chiara. Un accordo e' la sola cosa scritta qui che il lettore non puo'
+     * ricavare dalle teste — le teste dicono i tasti, non dicono che accordo
+     * sia — quindi e' la piu' importante e va trattata come tale: nome in
+     * grassetto sul piatto scuro delle altre etichette, e la forma di fianco.
+     *
+     * Se la carta intera non entra, si stampa il solo nome: meglio sapere che
+     * accordo e' senza la forma che non saperlo. Non entra nemmeno il nome
+     * soltanto quando lo spazio e' zero, e allora non c'e' niente da fare.
+     */
+    function chordCard(ctx, cx, cy, name, cells, k, fits, half) {
+        /* Strette: fra un cambio d'accordo e il successivo c'e' quello che
+           c'e', e ogni pixel di margine e' una carta che ripiega sul solo
+           nome. Con questi valori due accordi a un tempo e mezzo l'uno
+           dall'altro tengono entrambi la forma. */
+        const pad = 4 * k;
+        const gap = 5 * k;
+        const fretPx = Math.round(9.5 * k);
+        const fingerPx = Math.round(6 * k);
+
+        ctx.save();
+        ctx.font = '800 ' + Math.round(12.5 * k) + 'px ' + kitFont('text');
+        const nameW = ctx.measureText(name).width;
+
+        /* Caselle di larghezza uniforme, cosi' le corde si leggono in colonna
+           invece che come una parola. */
+        let cellW = 0;
+        if (cells) {
+            ctx.font = '700 ' + fretPx + 'px ' + kitFont('num');
+            for (const c of cells) {
+                let cw = ctx.measureText(c.fret).width;
+                if (c.finger) {
+                    ctx.font = '700 ' + fingerPx + 'px ' + kitFont('num');
+                    cw += 1.5 * k + ctx.measureText(String(c.finger)).width;
+                    ctx.font = '700 ' + fretPx + 'px ' + kitFont('num');
+                }
+                cellW = Math.max(cellW, cw);
+            }
+            cellW += 2 * k;
+        }
+        const shapeW = cells ? cellW * cells.length : 0;
+
+        /*
+         * LA CARTA PARTE DOVE PARTE L'ACCORDO, non gli sta a cavallo.
+         *
+         * Centrata sul cambio, metà della carta occupava il tempo PRIMA che
+         * l'accordo cominci — spazio che appartiene all'accordo precedente — e
+         * due cambi ravvicinati si rubavano la forma a vicenda per pochi
+         * pixel. Allineata all'attacco usa esattamente lo spazio che ha: da
+         * qui al prossimo cambio. E' anche come si scrivono i nomi degli
+         * accordi su qualunque spartito.
+         */
+        let withShape = !!cells;
+        let boxW = pad + nameW + (withShape ? gap + shapeW : 0) + pad;
+        if (!fits(cx - pad, cx - pad + boxW)) {
+            if (!withShape) { ctx.restore(); return false; }
+            withShape = false;
+            boxW = pad * 2 + nameW;
+            if (!fits(cx - pad, cx - pad + boxW)) { ctx.restore(); return false; }
+        }
+
+        const x0 = cx - pad;
+        const r = Math.min(5 * k, half);
+        ctx.beginPath();
+        ctx.moveTo(x0 + r, cy - half);
+        ctx.arcTo(x0 + boxW, cy - half, x0 + boxW, cy + half, r);
+        ctx.arcTo(x0 + boxW, cy + half, x0, cy + half, r);
+        ctx.arcTo(x0, cy + half, x0, cy - half, r);
+        ctx.arcTo(x0, cy - half, x0 + boxW, cy - half, r);
+        ctx.closePath();
+        ctx.fillStyle = 'rgba(9,13,22,0.92)';
+        ctx.fill();
+        ctx.strokeStyle = kitInk('dim', 0.55);
+        ctx.lineWidth = Math.max(1, 1 * k);
+        ctx.stroke();
+
+        ctx.font = '800 ' + Math.round(12.5 * k) + 'px ' + kitFont('text');
+        ctx.fillStyle = 'rgb(255 214 120)';
+        fillInkCentred(ctx, name, x0 + pad, cy, 'left');
+
+        if (withShape) {
+            let cxi = x0 + pad + nameW + gap;
+            for (const c of cells) {
+                ctx.font = '700 ' + fretPx + 'px ' + kitFont('num');
+                ctx.fillStyle = (c.fret === '×') ? kitInk('dim', 0.6) : kitInk('text');
+                fillInkCentred(ctx, c.fret, cxi, cy, 'left');
+                if (c.finger) {
+                    const fw = ctx.measureText(c.fret).width;
+                    ctx.font = '700 ' + fingerPx + 'px ' + kitFont('num');
+                    ctx.fillStyle = 'rgb(255 214 120 / 0.85)';
+                    fillInkCentred(ctx, String(c.finger), cxi + fw + 1.5 * k, cy - fretPx * 0.26, 'left');
+                }
+                cxi += cellW;
+            }
+        }
+        ctx.restore();
+        return true;
+    }
+
     /** Quanto sale sopra il centro di una testa la pila arco + badge. */
     function techReach(r) {
         return r * 0.9 + Math.max(5, r * 0.45) + 2 * techBadgeR(r);
@@ -1376,6 +1515,33 @@ import * as c from './src/kit/controls.js';
         return (h && typeof h.getTime === 'function') ? h : null;
     }
 
+    /**
+     * LA VISTA FILTRATA, E SE E' VUOTA QUELLA COMPLETA.
+     *
+     * `getFilteredNotes` / `getFilteredChords` danno quello che il livello di
+     * maestria selezionato si aspetta che tu suoni, e cadono sulla lista
+     * completa quando il brano ha una sola difficolta'. Chiederle con un
+     * `||` sembrava fare la stessa cosa e non la faceva: un array VUOTO e'
+     * truthy, quindi `[] || getChords()` vale `[]` e la seconda chiamata non
+     * avveniva mai.
+     *
+     * Costo reale: su qualunque brano con dati di frase i cui accordi non
+     * sono replicati dentro le frasi — cioe' il caso normale — il piano degli
+     * accordi riportava zero per sempre. I nomi degli accordi non sono MAI
+     * comparsi, e la ragione non era il disegno: era questa riga.
+     *
+     * Il ripiego va sul VUOTO, non sull'assenza. Gli accordi sono metadati
+     * (nome e diteggiatura) e non "cosa devi suonare": quello lo dicono le
+     * note, che restano filtrate.
+     */
+    function chartList(host, filtered, full) {
+        const a = call(host, filtered, null);
+        if (Array.isArray(a) && a.length) return a;
+        const b = call(host, full, null);
+        if (Array.isArray(b) && b.length) return b;
+        return Array.isArray(a) ? a : [];
+    }
+
     function call(api2, name, fallback) {
         if (!api2 || typeof api2[name] !== 'function') return fallback;
         try {
@@ -1573,14 +1739,43 @@ import * as c from './src/kit/controls.js';
          * da `laneBar - 6k`, quindi si allunga da sola quando la pila sale.
          */
         const CHIP_HALF = 6;
-        const LANE_STEP = 15;
         const HEAD_AIR = 7;
         /* Il minimo: la targhetta di battuta sopra il bordo della testa. */
         const barMin = (rHead) => rHead * 1.16 + (HEAD_AIR + CHIP_HALF) * k;
         /* L'ideale: sopra il badge di tecnica in cima al suo arco. */
         const barWant = (rHead) => techReach(rHead) + (HEAD_AIR + CHIP_HALF) * k;
-        const lanesUp = ((wantChord ? LANE_STEP : 0) + (wantSect ? LANE_STEP : 0)) * k;
-        const roomFor = (rHead) => barMin(rHead) + lanesUp + (CHIP_HALF + 2) * k;
+        /*
+         * Quanto sale ogni piano sopra quello sotto, in UN SOLO posto.
+         *
+         * Lo leggono il calcolo dello spazio da riservare e il piazzamento
+         * finale delle corsie, e due espressioni gemelle sono due espressioni
+         * che divergono: riservare per un passo e disegnare con un altro
+         * significa una corsia fuori dalla stanza. La carta dell'accordo e'
+         * piu' alta di una targhetta, quindi il passo non e' uniforme e la
+         * tentazione di ricopiarlo a mano e' proprio quella da togliere.
+         */
+        const stackUp = (cardHalf) => {
+            const toChord = wantChord ? (CHIP_HALF + cardHalf + 4) * k : 0;
+            const toSect = wantSect
+                ? ((wantChord ? cardHalf : CHIP_HALF) + CHIP_HALF + 4) * k
+                : 0;
+            const top = ((wantSect ? CHIP_HALF : (wantChord ? cardHalf : CHIP_HALF)) + 2) * k;
+            return { toChord: toChord, toSect: toSect, total: toChord + toSect, top: top };
+        };
+        /*
+         * SI RISERVA PER LE TARGHETTE, la carta alta si prende l'aria.
+         *
+         * Riservare l'altezza della carta dell'accordo sempre la faceva pagare
+         * alle corde: in vista pagina la testa scendeva del 38%, cioe' note da
+         * 4px, per un piano che quando c'e' cosi' poco spazio non serve.
+         *
+         * Quindi il minimo e' calcolato su tre targhette, e la carta intera si
+         * apre solo se l'aria che il centramento lascia sopra la basta. Il
+         * NOME dell'accordo c'e' comunque: e' la forma — tasti e dita — che ha
+         * bisogno di una riga in piu' e che quella riga se la deve guadagnare.
+         */
+        const chipStack = stackUp(CHIP_HALF);
+        const roomFor = (rHead) => barMin(rHead) + chipStack.total + chipStack.top;
 
         /*
          * Un giro di raffinamento, perche' la testa VERA non e' quella
@@ -1627,12 +1822,17 @@ import * as c from './src/kit/controls.js';
          * Le corsie salgono fino all'ideale se ci sta, mai sotto il minimo.
          */
         const laneRoom = staffTop - band.top;
+        const fullStack = stackUp(CHORD_CARD_HALF);
+        const cardRoom = wantChord
+            && laneRoom >= barMin(headR) + fullStack.total + fullStack.top;
+        const stack = cardRoom ? fullStack : chipStack;
+        const cardHalf = (cardRoom ? CHORD_CARD_HALF : CHIP_HALF) * k;
         const dBar = Math.max(
             barMin(headR),
-            Math.min(barWant(headR), laneRoom - lanesUp - (CHIP_HALF + 2) * k)
+            Math.min(barWant(headR), laneRoom - stack.total - stack.top)
         );
-        const dChord = wantChord ? dBar + LANE_STEP * k : dBar;
-        const dSect = wantSect ? dChord + LANE_STEP * k : dChord;
+        const dChord = dBar + stack.toChord;
+        const dSect = dChord + stack.toSect;
         const laneBar = staffTop - dBar;
         const laneChord = staffTop - dChord;
         const laneSect = staffTop - dSect;
@@ -2510,9 +2710,6 @@ import * as c from './src/kit/controls.js';
         }
 
         if (wantChord) {
-            ctx.font = '700 ' + Math.round(11 * k) + 'px ' + kitFont('text');
-            ctx.textAlign = 'center';
-            ctx.textBaseline = 'middle';
             // Only where the chord actually changes. A label over every strum
             // of the same shape is a row of noise, not information.
             let lastName = null;
@@ -2524,11 +2721,11 @@ import * as c from './src/kit/controls.js';
                 const changed = nm !== lastName;
                 lastName = nm;
                 if (!changed || c.t < from || c.t > to) continue;
-                const cx = xAt(c.t);
-                const half = ctx.measureText(String(nm)).width / 2;
-                if (!laneFree('chord', cx - half, cx + half)) continue;
-                ctx.fillStyle = 'rgba(255,214,120,0.85)';
-                ctx.fillText(String(nm), cx, laneChord);
+                chordCard(
+                    ctx, xAt(c.t), laneChord, String(nm),
+                    cardRoom ? chordCells(tpl, count) : null, k,
+                    (x0, x1) => laneFree('chord', x0, x1), cardHalf
+                );
             }
         }
 
@@ -2624,8 +2821,8 @@ import * as c from './src/kit/controls.js';
 
         const host = hw();
         if (!host) return;
-        const notes = call(host, 'getFilteredNotes', null) || call(host, 'getNotes', []) || [];
-        const chords = call(host, 'getFilteredChords', null) || call(host, 'getChords', []) || [];
+        const notes = chartList(host, 'getFilteredNotes', 'getNotes');
+        const chords = chartList(host, 'getFilteredChords', 'getChords');
         if (!notes.length && !chords.length) return;
 
         const templates = call(host, 'getChordTemplates', []) || [];
@@ -3983,8 +4180,8 @@ import * as c from './src/kit/controls.js';
         const cs = fb.currentSong || {};
         const beats = host ? (call(host, 'getBeats', []) || []) : [];
         const map = beats.length ? tempoMap(beats) : null;
-        const notes = host ? (call(host, 'getFilteredNotes', []) || []) : [];
-        const chords = host ? (call(host, 'getFilteredChords', []) || []) : [];
+        const notes = host ? chartList(host, 'getFilteredNotes', 'getNotes') : [];
+        const chords = host ? chartList(host, 'getFilteredChords', 'getChords') : [];
         const tuning = songTuning();
         const out = {
             plugin: {

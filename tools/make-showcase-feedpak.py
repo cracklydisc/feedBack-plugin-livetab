@@ -59,6 +59,36 @@ BARS_PER_SECTION = 4
 
 STRINGS = 6                     # 0 = mi cantino, 5 = mi basso (ordine dell'app)
 
+# ---------------------------------------------------------------------------
+# Forme di accordo REALI, con nome e diteggiatura.
+#
+# I template venivano sintetizzati dalle note simultanee e chiamati Shape1,
+# Shape2, ... con `fingers` tutti a -1. Il piano degli accordi mostrava quindi
+# "Shape3", che non e' un accordo, e la diteggiatura non c'era da mostrare: il
+# renderer sembrava rotto quando invece il pacchetto non aveva niente da dire.
+#
+# La tabella e' indicizzata sulla FORMA, non sulla sezione: qualunque punto del
+# pacchetto suoni quelle corde a quei tasti prende nome e dita da qui. Cosi'
+# resta utile se domani un'altra sezione usa un DO, e non c'e' niente di
+# cablato su una singola sezione.
+#
+# Ordine delle liste: indice 0 = mi cantino ... 5 = mi basso, come le note.
+# -1 = corda non suonata, 0 in `fingers` = corda a vuoto.
+CHORD_SHAPES = {
+    #        mi   si   sol  re   la   MI
+    'A5':  ([-1,  -1,  -1,   2,   0,  -1], [-1, -1, -1,  1,  0, -1]),
+    'Am':  ([  0,   1,   2,   2,   0,  -1], [ 0,  1,  2,  3,  0, -1]),
+    'C':   ([  0,   1,   0,   2,   3,  -1], [ 0,  1,  0,  2,  3, -1]),
+    'G':   ([  3,   0,   0,   0,   2,   3], [ 4,  0,  0,  0,  2,  3]),
+    'F':   ([  1,   1,   2,   3,   3,   1], [ 1,  1,  2,  4,  3,  1]),
+}
+
+# Cercata per forma: la chiave e' la tupla dei tasti per corda.
+CHORD_BY_FRETS = {
+    tuple(frets): (name, fingers)
+    for name, (frets, fingers) in CHORD_SHAPES.items()
+}
+
 
 def bar_time(bpm, bar):
     """Il tempo in secondi dell'inizio della battuta `bar` (1-based)."""
@@ -223,18 +253,21 @@ def s_jumps(bpm, b0):
 
 
 def s_chords(bpm, b0):
-    """Accordi: teste impilate, dal bicordo alla forma a cinque corde."""
+    """Accordi: forme vere, dal bicordo al barre su sei corde.
+
+    Le forme vengono da CHORD_SHAPES, percio' i template del pacchetto
+    portano il nome dell'accordo e la diteggiatura invece di "Shape3": e'
+    esattamente quello che il piano degli accordi deve poter mostrare.
+    """
     out = []
-    shapes = [
-        [(1, 5), (2, 7)],
-        [(0, 3), (1, 5), (2, 5)],
-        [(1, 7), (2, 9), (3, 9), (4, 7)],
-        [(0, 5), (1, 5), (2, 5), (3, 7), (4, 7)],
-    ]
+    progression = ['A5', 'Am', 'G', 'F']
     for i in range(BARS_PER_SECTION * 2):
         bar, beat = b0 + i // 2, 1 + (i % 2) * 2
         t = beat_time(bpm, bar, beat)
-        for (s, f) in shapes[i % len(shapes)]:
+        frets, _ = CHORD_SHAPES[progression[i % len(progression)]]
+        for s, f in enumerate(frets):
+            if f < 0:
+                continue
             out.append(note(t, s, f, sus=(60.0 / bpm) * 0.8))
     return out
 
@@ -354,9 +387,14 @@ def build(bpm):
         frets = [-1] * STRINGS
         for n in group:
             frets[n['s']] = n['f']
-        name = 'Shape%d' % (cid + 1)
+        # Se la forma e' una di quelle note, prende il suo nome e le sue dita;
+        # altrimenti resta un gruppo anonimo, e dirlo e' meglio che inventare
+        # un nome di accordo che nessuno ha verificato.
+        known = CHORD_BY_FRETS.get(tuple(frets))
+        name = known[0] if known else ('Shape%d' % (cid + 1))
+        fingers = list(known[1]) if known else [-1] * STRINGS
         templates.append({'name': name, 'displayName': name,
-                          'frets': frets, 'fingers': [-1] * STRINGS})
+                          'frets': frets, 'fingers': fingers})
         chords.append({'t': t, 'id': cid,
                        'notes': [{'s': n['s'], 'f': n['f']} for n in group]})
         handshapes.append({'chord_id': cid, 'start_time': t,

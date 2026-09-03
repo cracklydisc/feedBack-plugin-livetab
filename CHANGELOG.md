@@ -8,50 +8,82 @@ and it follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 Versions before 0.26.1 were never published; the history starts at the first
 public alpha.
 
-## [0.38.0] — 2026-09-03
+## [0.29.0] — 2026-09-03
+
+One release, not ten. The version in `plugin.json` moved from 0.29.0 to 0.38.0
+during development — those numbers were working markers between commits on an
+unreleased branch, not releases, and treating them as such would have implied
+nine versions nobody could install. The release after 0.28.0 is this one.
+
+### Added
+
+- **The shared design system.** Live Tab draws its settings screen and its
+  in-player panel from the plugin kit that Riff Repeater uses, so the two
+  plugins are the same object rather than two things that resemble each other.
+  The kit is vendored, not imported — copied into `src/kit/` — because any
+  plugin can be disabled and there is no load order to rely on.
+- **The settings screen is built from the schema.** Every control is chosen by
+  the shape of the value it edits rather than picked by hand: a bool gets a
+  toggle, up to four options get a segmented control, a runtime list gets a
+  native select, a short range gets a stepper and a long one a slider. Adding
+  a setting no longer means deciding what it should look like.
+- **Hammer-on, pull-off, bend, harmonic, tap, accent and dead notes are drawn.**
+  The chart already carried all of it and none of it was on the staff. Each is
+  drawn as what it is: a bend is an arc that rises with an arrowhead and the
+  distance written at its head, a harmonic is a diamond head rather than a
+  circle with a diamond around it, a dead note is an `×` in the head, and a
+  slur is a circular arc between the two notes it joins.
+- **One badge for every technique symbol.** `H`, `P`, `T` and the accent share
+  a dark disc with a ring and the symbol inside — the same dark plate the bar
+  and section labels use — so they read as one family and stay legible over a
+  coloured string. The accent is drawn as a wedge rather than typed as `>`,
+  which in a mono face is punctuation sitting on the text baseline.
+- **A showcase pack.** `tools/make-showcase-feedpak.py` builds a song whose
+  fifteen sections exercise every notation field the format has, so a defect in
+  the drawing of an articulation is visible before it ships instead of being
+  reported from a real song weeks later. It has already found four.
 
 ### Changed
 
+- **The drawing reads the kit's tokens.** Colours and type come from the theme
+  at draw time rather than from constants in this file, so the staff follows
+  the same palette as every panel. A canvas cannot inherit a custom property,
+  so it is read with `getComputedStyle`.
 - **The bar numbers are out from under the notes.** The lanes above the strings
-  — bar number, chord name, section — were pinned at fixed distances from the
-  top string while a note head sticks up by its own radius and a technique
-  badge by more than twice that, so at any note size above the smallest the
-  header sat inside the notes. They are now built upward from the head: the
-  clearance is measured, not guessed, and the bar line lengthens with the
-  stack. The room reserved above the strings is the minimum, and the lanes
-  spend the air that the centred staff leaves over — so on a single staff they
-  rise well clear at no cost to note size, which is where they were reported.
+  were pinned at fixed distances from the top string while a note head sticks
+  up by its own radius and a technique badge by more than twice that, so at any
+  note size above the smallest the header sat inside the notes. The stack is
+  now built upward from the head, and the bar line lengthens with it. The room
+  reserved above the strings is the minimum, and the lanes spend the air a
+  centred staff already leaves over — so on a single staff they rise well clear
+  at no cost to note size.
 - **A sustain tail says how long the note is.** It used to fade out over its
   last quarter, and a fade says "somewhere around here": the visible end fell
-  short of the real one, which is exactly how a duration gets misread. The
-  tail is now solid to the sustain's true end and closes with a tick, so there
-  is one place to look and it is the right one. It is also thicker, taken off
-  the head radius rather than a fixed pixel count.
-- **One badge for every technique symbol.** `H` and `P` wore a pill with legs,
-  `T` and the accent were bare 9px glyphs in the faintest ink on the staff —
-  three drawings for one kind of information. All four now share a dark disc
-  with a ring and the symbol inside, the same dark plate the bar and section
-  labels use, so they read as a family and stay legible over a coloured
-  string. The accent is drawn as a wedge rather than typed as `>`, which in a
-  mono face is punctuation on the text baseline.
-- **Hammer-on and pull-off are a circular arc with the badge above it.** The
-  arc's radius is derived from its sagitta and half-chord, so it is a true
-  circle rather than a parabola that resembles one, and the badge is clamped
-  so it can never climb into the bar-number lane.
+  short of the real one, which is exactly how a duration gets misread. The tail
+  is now solid to the sustain's true end and closes with a tick, and it is
+  thicker — taken off the head radius rather than a fixed pixel count.
+- The in-player panel is the kit's folded strip: a footswitch for stop, a
+  single `OPEN` affordance, and A/B markers with brackets on a padded timeline
+  instead of full-height rules.
 
 ### Fixed
 
-- **The bend section drew tails with no note heads.** A second `r` in the
-  tails pass — where the head radius does not exist — threw a ReferenceError
-  every frame a bend was in view, and the per-staff guard abandoned the staff
-  between the two passes. The earlier fix had corrected the line above it and
-  left this one sitting under a comment explaining the very defect. There is
-  now a test that walks brace depth over that pass; the first version of it
-  counted occurrences and passed with the bug put back, which is worse than no
-  test at all.
-
-Versions 0.29.0 through 0.37.0 shipped without changelog entries; their detail
-is in the git history.
+- **Chord names never drew, on any song with phrase data.** The plugin asked
+  for the difficulty-filtered chord list and fell through to the raw one only
+  when the answer was falsy — and an empty array is truthy, so a chart whose
+  phrases carry notes but no chords reported zero chords for ever. Both lists
+  are now consulted, and the fallback is on emptiness rather than on absence.
+- **The bend section drew tails with no note heads.** A stray `r` in the tails
+  pass — where the head radius does not exist — threw a ReferenceError every
+  frame a bend was in view, and the per-staff guard abandoned the staff between
+  the two passes. There is now a test that walks brace depth over that pass.
+- **A fret number sat above the centre of its head.** `actualBoundingBox`
+  metrics are relative to the *current* text baseline, and the baseline was
+  being set after the measurement — so a 38px digit was corrected by 2.8px
+  instead of 12. Every isolated test passed, because a scratch canvas starts
+  clean.
+- Page view no longer loses the staves below the first when one of them throws,
+  and a fault is reported once rather than sixty times a second.
 
 ## [0.28.0] — 2026-09-01
 

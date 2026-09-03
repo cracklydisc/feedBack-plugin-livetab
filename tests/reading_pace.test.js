@@ -378,3 +378,70 @@ test('the tails pass never reads the head radius by its short name', () => {
     assert.deepEqual(stray, [],
         'the tails pass reads `r`, which only exists in the heads pass');
 });
+
+// ─────────────────────────────────────────────────────────────────────────
+// An empty array is truthy, and that is why chord names never appeared.
+//
+// `getFilteredChords()` returns what the selected mastery level expects you to
+// play, and falls back to the whole list only for a song with one difficulty.
+// Asking for it with `filtered || full` looks like it handles both and does
+// not: on a chart with phrase data whose phrases carry notes but no chords —
+// the ordinary case — the filtered answer is `[]`, which is truthy, so the
+// second call never happened and the chord lane had nothing to draw for ever.
+//
+// `chartList` falls back on EMPTINESS instead. These tests are what tell the
+// two apart: `||` passes the first three and fails the fourth.
+test('the chart list falls back when the filtered view is empty', () => {
+    const fn = extractFunction(SRC, 'function chartList');
+    const sandbox = { call: (host, name) => host[name] };
+    vm.createContext(sandbox);
+    vm.runInContext(fn + '\nglobalThis.chartList = chartList;', sandbox);
+    const chartList = sandbox.chartList;
+
+    const full = [{ t: 1 }, { t: 2 }];
+
+    /* Spread into a host array before comparing: a value built inside the vm
+       sandbox has that context's Array prototype, and strict deep equality
+       checks the prototype — the arrays match and the assertion fails. */
+    const got = (host) => [...chartList(host, 'f', 'a')].map((x) => x.t);
+
+    // Filtered has something: it wins, the full list is not consulted.
+    assert.deepEqual(got({ f: [{ t: 9 }], a: full }), [9]);
+    // No filtered view at all (single-difficulty song): the full list.
+    assert.deepEqual(got({ f: null, a: full }), [1, 2]);
+    // Neither: an empty array, not null, because callers read `.length`.
+    assert.deepEqual(got({ f: null, a: null }), []);
+    // The case that was broken: filtered is EMPTY but the chart has chords.
+    assert.deepEqual(got({ f: [], a: full }), [1, 2]);
+});
+
+// ─────────────────────────────────────────────────────────────────────────
+// A chord card reads left to right from the LOWEST string.
+//
+// Chord boxes have been written that way for as long as they have existed,
+// while the chart indexes strings from 0 = high E. Getting it backwards would
+// print a real chord's mirror image — which still looks like a plausible chord
+// shape, so nothing about the picture would say it was wrong.
+test('the chord card puts the lowest string first', () => {
+    const fn = extractFunction(SRC, 'function chordCells');
+    const sandbox = {};
+    vm.createContext(sandbox);
+    vm.runInContext(fn + '\nglobalThis.chordCells = chordCells;', sandbox);
+    const chordCells = sandbox.chordCells;
+
+    // Am as the chart holds it: index 0 is the high E.
+    const am = { frets: [0, 1, 2, 2, 0, -1], fingers: [0, 1, 2, 3, 0, -1] };
+    const cells = [...chordCells(am, 6)];
+    assert.deepEqual(cells.map((c) => c.fret), ['×', '0', '2', '2', '1', '0'],
+        'x02210, the way Am is written');
+    assert.deepEqual(cells.map((c) => c.finger), [0, 0, 3, 2, 1, 0]);
+
+    // No finger data — the Guitar Pro case — says the fret and nothing more.
+    const noFingers = [...chordCells({ frets: [3, 0, 0, 0, 2, 3], fingers: [-1, -1, -1, -1, -1, -1] }, 6)];
+    assert.deepEqual(noFingers.map((c) => c.finger), [0, 0, 0, 0, 0, 0]);
+    // An open string carries no finger even when the source claims one.
+    assert.equal(chordCells({ frets: [0], fingers: [2] }, 4)[3].finger, 0);
+    // Nothing played at all is not a chord.
+    assert.equal(chordCells({ frets: [-1, -1, -1, -1, -1, -1] }, 6), null);
+    assert.equal(chordCells(null, 6), null);
+});
