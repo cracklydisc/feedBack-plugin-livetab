@@ -799,12 +799,28 @@ import * as c from './src/kit/controls.js';
          * stripped. The brackets then sit slightly low, which is right: they
          * are around the number, and the number is the thing being read.
          */
+        /*
+         * LA BASELINE SI IMPOSTA PRIMA DI MISURARE, e questo era il difetto.
+         *
+         * `actualBoundingBoxAscent/Descent` sono relativi al `textBaseline`
+         * CORRENTE. Misurando con `middle` attivo, un `5` da 38px riporta
+         * ascent 14.78 e descent 9.22 — ripartiti attorno alla meta' della
+         * scatola em — e la correzione che ne esce, 2.78, e' quella giusta per
+         * una baseline `middle`. Poi il disegno la applicava a una baseline
+         * `alphabetic`, dove la stessa cifra ha ascent 24 e descent 0 e la
+         * correzione e' 12. Nove pixel e mezzo di scarto: esattamente quello
+         * che si vedeva, e la ragione per cui ogni prova isolata riusciva —
+         * la' partivo da un contesto pulito e impostavo la baseline prima.
+         *
+         * Una misura presa in uno stato e usata in un altro. E' la terza volta
+         * oggi che questo e' il difetto, e la seconda in questa funzione.
+         */
+        ctx.textBaseline = 'alphabetic';
         const core = String(text).replace(/[()\[\]]/g, '') || String(text);
         const m = ctx.measureText(core);
         const up = m.actualBoundingBoxAscent;
         const down = m.actualBoundingBoxDescent;
         if (typeof up === 'number' && typeof down === 'number') {
-            ctx.textBaseline = 'alphabetic';
             ctx.fillText(text, cx, cy + (up - down) / 2);
             return;
         }
@@ -1839,7 +1855,18 @@ import * as c from './src/kit/controls.js';
                 const semis = it.n.bn;
                 const txt = (semis >= 2) ? 'full' : (semis >= 1 ? '½' : '¼');
                 const rise = Math.min(gap * 0.8, (10 + 4 * Math.min(2, semis)) * k);
-                const bx = x0 + Math.max(6 * k, r * 0.8);
+                /*
+                 * `headR`, non `r`.
+                 *
+                 * Questo blocco sta nella parte delle code, dove il raggio
+                 * della testa NON e' in scope: `r` esiste solo dentro il ciclo
+                 * delle teste, piu' sotto. Scritto `r` qui, ogni frame con un
+                 * bend in vista lanciava un ReferenceError e portava via il
+                 * resto della staffa — cioe' tutte le teste e tutte le
+                 * etichette. Trovato dal guard per staffa aggiunto in 0.33.0,
+                 * che e' esattamente il caso per cui esiste.
+                 */
+                const bx = x0 + Math.max(6 * k, headR * 0.8);
                 const topY = y - rise;
 
                 ctx.save();
@@ -2012,6 +2039,22 @@ import * as c from './src/kit/controls.js';
             ctx.setLineDash([]);
 
             ctx.fillStyle = solid ? '#08101c' : ink;
+            /*
+             * IL FONT SI IMPOSTA QUI, accanto al disegno.
+             *
+             * Era impostato sessanta righe piu' su, per misurare la larghezza
+             * della capsula — e fra quelle sessanta righe altri blocchi (la
+             * lettera H/P, i segni sopra la testa) lo cambiano. Quindi
+             * `fillInkCentred` misurava un font da 9px e disegnava con uno da
+             * 38: correzione applicata 2,78px invece di 12, e la cifra 9,22px
+             * sopra il centro del cerchio. E' il difetto segnalato tre volte,
+             * e nessuna delle mie tre ipotesi precedenti era questa.
+             *
+             * La lezione non e' "rimetti il font": e' che una misura e il
+             * disegno che la usa devono stare adiacenti, perche' qualunque
+             * cosa in mezzo puo' invalidarla.
+             */
+            ctx.font = '700 ' + Math.round(fs) + 'px ' + kitFont('num');
             fillInkCentred(ctx, label, x, y);
 
             // The second label, beside the head. Sideways is the only
@@ -2029,6 +2072,7 @@ import * as c from './src/kit/controls.js';
                     ctx.fillStyle = 'rgba(6,9,15,0.88)';
                     ctx.fillRect(ax - 1.5 * k, y - 6.5 * k, aw + 3 * k, 13 * k);
                     ctx.fillStyle = 'rgba(255,255,255,0.82)';
+                    ctx.font = '600 ' + Math.round(fs * 0.62) + 'px ' + kitFont('num');
                     fillInkCentred(ctx, aside, ax, y, 'left');
                 }
             }
