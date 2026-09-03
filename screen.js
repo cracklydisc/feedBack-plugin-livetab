@@ -885,6 +885,12 @@ import * as c from './src/kit/controls.js';
     // ─────────────────────────────────────────────────────────────────────
 
     let tempoCache = { beats: null, map: null };
+    /*
+     * Whether a staff has already failed to draw. One report per session: the
+     * fault is in the code, not in the frame, so the second occurrence tells
+     * nobody anything the first did not.
+     */
+    let drawFailed = false;
 
     function buildTempoMap(beats) {
         const raw = [];
@@ -1711,7 +1717,9 @@ import * as c from './src/kit/controls.js';
                 }
                 const grad = ctx.createLinearGradient(x0, y, x1, y);
                 grad.addColorStop(0, col);
-                grad.addColorStop(1, 'rgba(255,255,255,0.15)');
+                /* Fading to nothing rather than to a white ghost: the band
+                   belongs to the string it leaves, all the way along. */
+                grad.addColorStop(1, kitInk('dim', 0.15));
                 ctx.strokeStyle = grad;
                 ctx.lineWidth = Math.max(2.5, 3.4 * k);
                 ctx.globalAlpha = 0.75;
@@ -1765,14 +1773,52 @@ import * as c from './src/kit/controls.js';
             }
 
             if (it.n.bn) {
-                // Bend: how far it goes, in the tab's own shorthand.
+                /*
+                 * A BEND IS A MOVEMENT, so it gets drawn as one: an arc rising
+                 * out of the head, an arrowhead where it arrives, and the
+                 * distance written at the top.
+                 *
+                 * It used to be the text alone — `full` floating above the
+                 * string, which says how far without saying that anything
+                 * moves. A tab's whole job is to make time and pitch visible,
+                 * and a bend is the one articulation that is pure pitch.
+                 *
+                 * In the STRING's colour, not white: it belongs to the note it
+                 * leaves, and every other thing that belongs to a note here
+                 * takes that colour.
+                 */
                 const semis = it.n.bn;
                 const txt = (semis >= 2) ? 'full' : (semis >= 1 ? '½' : '¼');
-                ctx.font = '700 ' + Math.round(fs * 0.8) + 'px ' + kitFont('text');
-                ctx.fillStyle = 'rgba(255,255,255,0.7)';
-                ctx.textAlign = 'center';
+                const rise = Math.min(gap * 0.8, (10 + 4 * Math.min(2, semis)) * k);
+                const bx = x0 + Math.max(6 * k, r * 0.8);
+                const topY = y - rise;
+
+                ctx.save();
+                ctx.strokeStyle = col;
+                ctx.lineWidth = Math.max(1.5, 2 * k);
+                ctx.beginPath();
+                ctx.moveTo(bx, y - r * 0.4);
+                ctx.quadraticCurveTo(bx + 5 * k, topY, bx + 11 * k, topY);
+                ctx.stroke();
+
+                /* The arrowhead, drawn rather than typed — a `^` is whatever
+                   the font has and sits on the text baseline, not on the arc. */
+                const ax = bx + 11 * k;
+                const ah = 3.2 * k;
+                ctx.fillStyle = col;
+                ctx.beginPath();
+                ctx.moveTo(ax + ah, topY);
+                ctx.lineTo(ax - ah * 0.6, topY - ah);
+                ctx.lineTo(ax - ah * 0.6, topY + ah);
+                ctx.closePath();
+                ctx.fill();
+
+                ctx.font = '700 ' + Math.round(fs * 0.74) + 'px ' + kitFont('num');
+                ctx.fillStyle = col;
+                ctx.textAlign = 'left';
                 ctx.textBaseline = 'middle';
-                ctx.fillText(txt, (x0 + x1) / 2, y - 9 * k);
+                ctx.fillText(txt, ax + ah + 3 * k, topY);
+                ctx.restore();
             }
         }
 
@@ -1940,16 +1986,25 @@ import * as c from './src/kit/controls.js';
                 const span = x - prev;
                 if (span > 3 && span < 90 * k) {
                     ctx.save();
-                    ctx.strokeStyle = 'rgba(255,255,255,0.55)';
-                    ctx.lineWidth = Math.max(1, 1.1 * k);
+                    /*
+                     * `dim`, not white. A slur is a HINT about how two notes
+                     * join, not content — and `dim` is this system's role for
+                     * exactly that, so the mark follows a theme instead of
+                     * being one fixed white among six string colours.
+                     */
+                    ctx.strokeStyle = kitInk('dim');
+                    ctx.lineWidth = Math.max(1.5, 2 * k);
                     ctx.beginPath();
                     const lift = it.n.ho ? -(r + 6 * k) : (r + 6 * k);
                     ctx.moveTo(prev + r * 0.5, y + lift * 0.35);
                     ctx.quadraticCurveTo((prev + x) / 2, y + lift, x - r * 0.5, y + lift * 0.35);
                     ctx.stroke();
                     if (fit > 0.8) {
-                        ctx.font = '700 ' + Math.round(8.5 * k) + 'px ' + kitFont('text');
-                        ctx.fillStyle = 'rgba(255,255,255,0.6)';
+                        /* Mono, like every other single character on the
+                           staff: an H beside a fret number in a different face
+                           reads as two different kinds of writing. */
+                        ctx.font = '700 ' + Math.round(9 * k) + 'px ' + kitFont('num');
+                        ctx.fillStyle = kitInk('dim');
                         ctx.textAlign = 'center';
                         ctx.textBaseline = 'middle';
                         ctx.fillText(it.n.ho ? 'H' : 'P', (prev + x) / 2, y + lift * 1.25);
@@ -1965,8 +2020,10 @@ import * as c from './src/kit/controls.js';
                 const x2 = xAt(ordered[nextIdx[oi]].t);
                 if (x2 > x + 2 && x2 - x < 220 * k) {
                     ctx.save();
-                    ctx.strokeStyle = 'rgba(255,255,255,0.38)';
-                    ctx.lineWidth = Math.max(1, 1 * k);
+                    /* Quieter than a slur's arc and in the same role, which
+                       is what tells the two apart without a letter. */
+                    ctx.strokeStyle = kitInk('dim', 0.6);
+                    ctx.lineWidth = Math.max(1, 1.2 * k);
                     ctx.beginPath();
                     const lift = -(r + 4 * k);
                     ctx.moveTo(x + r * 0.6, y + lift * 0.3);
@@ -1984,8 +2041,8 @@ import * as c from './src/kit/controls.js';
                 if (it.n.ac) above.push('>');
                 if (it.n.fhm) above.push('\u2715');
                 if (above.length) {
-                    ctx.font = '700 ' + Math.round(9 * k) + 'px ' + kitFont('text');
-                    ctx.fillStyle = 'rgba(255,255,255,0.6)';
+                    ctx.font = '700 ' + Math.round(9 * k) + 'px ' + kitFont('num');
+                    ctx.fillStyle = kitInk('dim');
                     ctx.textAlign = 'center';
                     ctx.textBaseline = 'middle';
                     ctx.fillText(above.join(' '), x, y - r - 6 * k);
@@ -2089,7 +2146,21 @@ import * as c from './src/kit/controls.js';
              * tenth — enough to read as a region, not enough to compete with
              * anything written in it.
              */
-            const aheadX = xAt(now + (S.aheadBeats || 0) / Math.max(0.1, beatsPerSec));
+            /*
+             * In BEATS, because that is what this layout is made of.
+             *
+             * The first version divided the setting by a `beatsPerSec` that
+             * does not exist anywhere in this file — a name I assumed. It threw
+             * a ReferenceError on every frame and the draw is inside a
+             * try/catch, so it failed in silence and took the rest of the frame
+             * with it: no cursor stroke, and in page turns none of the staves
+             * after this one. Two reports, one invented identifier.
+             *
+             * `pxPerBeat` and `paceFactor` are both right here, and x is a
+             * function of the beat position, so no time conversion is needed at
+             * all — which is why the wrong version was also the long way round.
+             */
+            const aheadX = playX + (S.aheadBeats || 0) * paceFactor(map) * pxPerBeat;
             if (aheadX > playX + 2) {
                 const wash = ctx.createLinearGradient(playX, 0, aheadX, 0);
                 wash.addColorStop(0, kitInk('accent', 0.12));
@@ -2231,7 +2302,26 @@ import * as c from './src/kit/controls.js';
 
         for (const view of stavesFor(map, now, rows)) {
             const band = { top: topPad + view.row * rowH, height: rowH };
-            drawStaff(chart, band, view);
+            /*
+             * ONE STAFF'S FAILURE MUST NOT TAKE THE PAGE.
+             *
+             * A throw inside `drawStaff` used to end this loop, so a fault on
+             * the first staff left staves two and three blank — and something
+             * upstream swallowed the exception, so the only evidence was a page
+             * that had lost most of itself. That is how a single invented
+             * identifier read as "we broke page view".
+             *
+             * Reported ONCE, not per frame: sixty identical lines a second is
+             * how a console stops being read.
+             */
+            try {
+                drawStaff(chart, band, view);
+            } catch (err) {
+                if (!drawFailed) {
+                    drawFailed = true;
+                    console.error('[' + ID + '] drawStaff threw — the rest of the page still drew:', err);
+                }
+            }
             if (view.veil > 0) {
                 ctx.fillStyle = 'rgba(6,9,15,' + view.veil.toFixed(2) + ')';
                 ctx.fillRect(0, band.top, w, band.height);
