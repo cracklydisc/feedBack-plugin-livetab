@@ -1456,7 +1456,20 @@ import * as c from './src/kit/controls.js';
         const wantChord = S.showChords;
         const wantSect = S.showSections;
         const tiers = 1 + (wantChord ? 1 : 0) + (wantSect ? 1 : 0);
-        const headroom = (6 + tiers * 12) * k;
+        /*
+         * LO SPAZIO IN ALTO DEVE CONTENERE ANCHE LE TESTE.
+         *
+         * Era calcolato solo sulle righe scritte sopra le corde — numero di
+         * battuta, accordo, sezione — e una testa sulla corda piu' alta sporge
+         * di `headMax` sopra la sua riga. Con una scala nota grande finiva
+         * dentro il numero di battuta: segnalato come le note sul mi cantino
+         * che coprono i dati in alto.
+         *
+         * `headMax` e' il raggio massimo che una testa raggiunge qui, quindi e'
+         * la misura giusta: lo spazio non e' "un po' di aria", e' quanto la
+         * cosa piu' alta occupa davvero.
+         */
+        const headroom = Math.max((6 + tiers * 12) * k, headMax + 8 * k);
         // Below the strings, in order: the palm-mute brackets, then the words.
         const footroom = headMax + 6 * k
             + (S.showPM ? 15 * k : 0)
@@ -1816,25 +1829,60 @@ import * as c from './src/kit/controls.js';
                     ctx.fillText(arrival, x1, y + (up ? -rise : rise) + 0.5);
                 }
             } else {
-                ctx.strokeStyle = col;
-                ctx.globalAlpha = 0.5;
-                ctx.lineWidth = Math.max(2.5, (it.n.vb ? 4 : 3.2) * k);
-                ctx.beginPath();
-                ctx.moveTo(x0, y);
-                if (it.n.vb) {
-                    // Vibrato rides the tail as a wave, the way tab writes it.
-                    const amp = 1.6 * k;
-                    const step = 10 * k;
-                    let sign = 1;
-                    for (let x = x0; x < x1; x += step) {
-                        ctx.lineTo(Math.min(x + step, x1), y + sign * amp);
-                        sign = -sign;
+                /*
+                 * LA CODA E' PIU' LEGGERA DELLA TESTA, e prima non lo era.
+                 *
+                 * Era spessa 3,2k (4k col vibrato) contro un anello da 1,4k:
+                 * piu' del doppio. Quindi la parte che dice "questa nota
+                 * dura" pesava piu' della parte che dice "questa e' la nota",
+                 * e su una tenuta lunga la testa spariva dentro la propria
+                 * coda. Segnalato esattamente cosi.
+                 *
+                 * Il peso ora viene dall'anello — due terzi — invece di
+                 * essere un numero a se': cambiare lo spessore dell'anello
+                 * porta la coda con se', e la gerarchia non si puo' rompere
+                 * per distrazione.
+                 *
+                 * E parte dal BORDO DESTRO del cerchio, non dal centro, con la
+                 * sfumatura verso il nulla: una coda che esce da sotto la testa
+                 * la attraversa, ed e' cio che la rendeva invisibile anche
+                 * quando era sottile.
+                 */
+                /*
+                 * Lo spessore dell'anello a riposo — non quello della nota
+                 * "adesso", che qui non e' noto e non serve: la coda non deve
+                 * ingrossare perche' il cursore le passa sopra.
+                 */
+                const ringW = Math.max(1.1, 1.4 * k);
+                const tailW = Math.max(1.6, ringW * 0.66);
+                const from = x0 + headR * 0.92;
+                if (x1 > from + 1) {
+                    const fade = ctx.createLinearGradient(from, y, x1, y);
+                    fade.addColorStop(0, col);
+                    fade.addColorStop(0.72, col);
+                    fade.addColorStop(1, kitInk('dim', 0));
+                    ctx.strokeStyle = fade;
+                    ctx.globalAlpha = 0.8;
+                    ctx.lineWidth = tailW;
+                    ctx.lineCap = 'round';
+                    ctx.beginPath();
+                    ctx.moveTo(from, y);
+                    if (it.n.vb) {
+                        // Vibrato rides the tail as a wave, the way tab writes it.
+                        const amp = Math.max(1.4, tailW * 0.9);
+                        const step = 9 * k;
+                        let sign = 1;
+                        for (let x = from; x < x1; x += step) {
+                            ctx.lineTo(Math.min(x + step, x1), y + sign * amp);
+                            sign = -sign;
+                        }
+                    } else {
+                        ctx.lineTo(x1, y);
                     }
-                } else {
-                    ctx.lineTo(x1, y);
+                    ctx.stroke();
+                    ctx.globalAlpha = 1;
+                    ctx.lineCap = 'butt';
                 }
-                ctx.stroke();
-                ctx.globalAlpha = 1;
             }
 
             if (it.n.bn) {
@@ -1961,22 +2009,20 @@ import * as c from './src/kit/controls.js';
 
             // Harmonics wear a diamond outside the head — natural and pinch
             // share the shape, pinch is the filled one.
-            if (S.showTech && (it.n.hm || it.n.hp)) {
-                const d = r + 3.5 * k;
-                ctx.beginPath();
-                ctx.moveTo(x, y - d);
-                ctx.lineTo(x + d, y);
-                ctx.lineTo(x, y + d);
-                ctx.lineTo(x - d, y);
-                ctx.closePath();
-                ctx.strokeStyle = 'rgba(255,255,255,0.65)';
-                ctx.lineWidth = Math.max(1, 1.1 * k);
-                if (it.n.hp) {
-                    ctx.fillStyle = 'rgba(255,255,255,0.12)';
-                    ctx.fill();
-                }
-                ctx.stroke();
-            }
+            /*
+             * L'ARMONICO NON E' UN CERCHIO CON UN ROMBO ATTORNO.
+             *
+             * Era esattamente quello: la testa normale piu' un rombo piu'
+             * grande intorno, due forme concentriche per un'idea sola, e a
+             * scala piena il rombo entrava nella corda sopra. La notazione
+             * standard dice l'opposto — un armonico ha una TESTA a rombo — e
+             * quello e' anche il disegno che toglie una forma invece di
+             * aggiungerne una.
+             *
+             * Sostituisce il cerchio, quindi si segna qui e si disegna piu'
+             * sotto, dove la testa prende la sua forma. Pizzicato = pieno.
+             */
+            const asDiamond = S.showTech && (it.n.hm || it.n.hp);
 
             // Which of the two goes in the head, and which beside it. The
             // head is the legible slot; the setting decides what belongs there.
@@ -2015,7 +2061,18 @@ import * as c from './src/kit/controls.js';
             const tw = ctx.measureText(label).width;
             const rx = Math.max(r, tw / 2 + 4.6 * k * fit);
             ctx.beginPath();
-            if (rx <= r + 0.5) {
+            if (asDiamond) {
+                /* Un rombo abbastanza largo da contenere l'etichetta: la
+                   diagonale porta meno spazio di un diametro, quindi cresce
+                   con il testo come fa la capsula. */
+                const dx = Math.max(r, tw / 2 + 7 * k * fit) * 1.28;
+                const dy = r * 1.24;
+                ctx.moveTo(x, y - dy);
+                ctx.lineTo(x + dx, y);
+                ctx.lineTo(x, y + dy);
+                ctx.lineTo(x - dx, y);
+                ctx.closePath();
+            } else if (rx <= r + 0.5) {
                 ctx.arc(x, y, r, 0, Math.PI * 2);
             } else {
                 ctx.moveTo(x - rx + r, y - r);
@@ -2098,28 +2155,60 @@ import * as c from './src/kit/controls.js';
                  * exists.
                  */
                 if (span > 3 && span < 90 * k) {
-                    ctx.save();
                     /*
-                     * `dim`, not white. A slur is a HINT about how two notes
-                     * join, not content — and `dim` is this system's role for
-                     * exactly that, so the mark follows a theme instead of
-                     * being one fixed white among six string colours.
+                     * UN PONTE, non un arco con una lettera che gli galleggia
+                     * sopra.
+                     *
+                     * L'arco sottile piu' la `H` staccata piu' — quando la
+                     * nota era anche legata — le parentesi facevano quattro
+                     * segni per un'idea, e si leggevano come parentesi
+                     * annidate. Segnalato come scomodo, e lo era.
+                     *
+                     * Cosa dice la tecnica: una sola pennata, due altezze. Il
+                     * ponte lo dice occupando lo spazio FRA le due teste, che
+                     * e' vuoto per definizione e che appartiene esattamente a
+                     * quel legame; la lettera sta DENTRO il ponte, non sopra,
+                     * perche' e' il nome di quel legame e non un commento su
+                     * di esso.
+                     *
+                     * La x resta la x: le due teste stanno dove stanno i loro
+                     * tempi. Un ponte non puo' mentire sul tempo come farebbe
+                     * una testa unica.
                      */
-                    ctx.strokeStyle = kitInk('dim');
-                    ctx.lineWidth = Math.max(1.5, 2 * k);
-                    ctx.beginPath();
-                    const lift = it.n.ho ? -(r + 6 * k) : (r + 6 * k);
-                    ctx.moveTo(prev + r * 0.5, y + lift * 0.35);
-                    ctx.quadraticCurveTo((prev + x) / 2, y + lift, x - r * 0.5, y + lift * 0.35);
-                    ctx.stroke();
-                    /* Inside the arc's guard now, so the two cannot disagree. */
-                    if (fit > 0.8) {
-                        /* Mono, like every other single character on the
-                           staff: an H beside a fret number in a different face
-                           reads as two different kinds of writing. */
-                        ctx.font = '700 ' + Math.round(9 * k) + 'px ' + kitFont('num');
-                        ctx.fillStyle = kitInk('dim');
-                        fillInkCentred(ctx, it.n.ho ? 'H' : 'P', (prev + x) / 2, y + lift * 1.25);
+                    ctx.save();
+                    const bh = Math.max(9, r * 0.62);
+                    const bx0 = prev + r * 0.86;
+                    const bx1 = x - r * 0.86;
+                    if (bx1 > bx0 + 2) {
+                        const by = y - r - bh * 0.62;
+                        ctx.fillStyle = kitInk('dim', 0.24);
+                        ctx.strokeStyle = kitInk('dim', 0.85);
+                        ctx.lineWidth = Math.max(1, 1.1 * k);
+                        const rr = bh / 2;
+                        ctx.beginPath();
+                        ctx.moveTo(bx0 + rr, by - rr);
+                        ctx.arcTo(bx1, by - rr, bx1, by + rr, rr);
+                        ctx.arcTo(bx1, by + rr, bx0, by + rr, rr);
+                        ctx.arcTo(bx0, by + rr, bx0, by - rr, rr);
+                        ctx.arcTo(bx0, by - rr, bx1, by - rr, rr);
+                        ctx.closePath();
+                        ctx.fill();
+                        ctx.stroke();
+
+                        /* Le due gambe che lo attaccano alle teste: cosi' il
+                           ponte appartiene a QUESTA coppia e non galleggia. */
+                        ctx.beginPath();
+                        ctx.moveTo(bx0 + rr * 0.6, by + rr);
+                        ctx.lineTo(prev + r * 0.5, y - r * 0.55);
+                        ctx.moveTo(bx1 - rr * 0.6, by + rr);
+                        ctx.lineTo(x - r * 0.5, y - r * 0.55);
+                        ctx.stroke();
+
+                        if (bx1 - bx0 > bh * 1.1) {
+                            ctx.fillStyle = kitInk('text');
+                            ctx.font = '800 ' + Math.round(bh * 0.72) + 'px ' + kitFont('num');
+                            fillInkCentred(ctx, it.n.ho ? 'H' : 'P', (bx0 + bx1) / 2, by);
+                        }
                     }
                     ctx.restore();
                 }

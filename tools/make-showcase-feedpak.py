@@ -120,7 +120,15 @@ def s_hopo(bpm, b0):
         t = beat_time(bpm, bar, beat)
         s = 2 + (i % 2)
         up = (i % 2 == 0)
-        out.append(note(t, s, 5, ln=True))
+        # NIENTE `ln` QUI, ed era un difetto del pacchetto, non del renderer.
+        #
+        # `ln` vuol dire "tenuta, non ribattuta" e `ho` vuol dire "attaccata
+        # martellando": sono alternative, non cumulabili. Marcandole entrambe,
+        # la seconda nota risultava legata E martellata, e usciva con le
+        # parentesi della legatura dentro la capsula sotto l'arco della
+        # legatura di espressione — quattro segni per un'idea. Il renderer
+        # disegnava correttamente una cosa che non esiste.
+        out.append(note(t, s, 5))
         out.append(note(t + (60.0 / bpm) * 0.5, s, 7 if up else 3,
                         ho=up, po=not up))
     return out
