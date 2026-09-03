@@ -783,3 +783,36 @@ Half an hour was spent on a layout bug that was three separate things wearing
 one appearance: a stale `?v=`, then a real cascade problem, then a test that
 compared the `top` of a zero-height spacer against its siblings and called it
 a wrap. Measure the thing itself, one layer at a time.
+
+## 24. The settings screen is the same language, with more room
+
+The kit said the opposite for eight releases — that a settings *page* is a form
+and should wear the host's utility classes, and that these rules were about the
+in-player panel. Withdrawn, because it was wrong about what the kit is.
+
+The kit is not a HUD style. It is one author's visual identity across their
+plugins, and a settings screen is where a reader spends the most unhurried time
+with it. Two plugins whose panels match and whose settings screens do not are
+two plugins that look related in the player and unrelated everywhere else,
+which is most of what an identity was for.
+
+The genre difference is real, and it is about **size and pace, not language**. A
+settings screen can afford wider wells, more prose per control, and a select
+where a panel would want a stepper — it is never read at a glance with a guitar
+in the way. Same parts, more room.
+
+Which control a value gets is still not the author's choice, and here the rule
+has three steps rather than two, all of them read off the value's own shape:
+
+| the value | what it gets | why |
+|---|---|---|
+| a boolean | `toggle` | |
+| up to four named options | `segmented` | five labels in one row get 66px each |
+| more than four, or a list the app supplies | `select` | past that, chips are a wall — and nobody can lay out a list whose length arrives at runtime |
+| a number with up to eight steps | `stepper` | you can reach any of them by pressing |
+| a number with more | `slider` | pressing forty times is not reaching |
+
+Every threshold in that table is arithmetic about the panel's width or the
+value's range, which is the same argument as the range strip's zone gap and its
+corner radius: whoever declares the option should not also have to know where
+the row stops working.

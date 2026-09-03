@@ -1241,7 +1241,22 @@ export function segmented(items, onPick, ariaLabel, opts = {}) {
      * five is where a row stops working. `opts.wrap` forces it either way for
      * the case the count cannot see.
      */
-    const many = (items || []).length > SEG_MAX_INLINE;
+    /*
+     * TWO REASONS TO WRAP, and the second one is the half I missed first.
+     *
+     * The count is one: five options in a row get a fifth of the width each.
+     * But four options can overflow just as badly if the labels are long — a
+     * four-way pick whose options read `The fret, with the note name beside it`
+     * has 120 characters in a row with room for about thirty-six, and it does
+     * not wrap, it ESCAPES: the buttons render past the edge of the card.
+     *
+     * Thirty-six characters across all labels is the budget the design's own
+     * notes name, and it is the right unit — what fails is the text not
+     * fitting, so the measure has to be the text.
+     */
+    const list = items || [];
+    const chars = list.reduce((n, it) => n + String(it.label || '').length, 0);
+    const many = list.length > SEG_MAX_INLINE || chars > SEG_MAX_CHARS;
     const laid = (opts.wrap === undefined) ? many : !!opts.wrap;
     const cls = ['fbk-seg'];
     if (opts.size === 'header') cls.push('fbk-seg-header');
@@ -1307,6 +1322,16 @@ export function segmented(items, onPick, ariaLabel, opts = {}) {
  * chips — see the note in `segmented`.
  */
 export const SEG_MAX_INLINE = 4;
+
+/**
+ * How many characters of label a single row can hold, across all its options.
+ *
+ * A count alone is not enough: four options whose labels run to a hundred
+ * characters do not wrap, they escape the card. Thirty-six is what a 360px
+ * panel's row fits at the label step, and a sheet's wider row is still the
+ * place where a long option belongs on its own line rather than stretched.
+ */
+export const SEG_MAX_CHARS = 36;
 
 /**
  * FAMILY 1b — a SELECT. One of a list too long, or too changeable, to lay out.

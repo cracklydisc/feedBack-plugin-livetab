@@ -2615,6 +2615,94 @@ import * as c from './src/kit/controls.js';
             + 'hover:bg-fb-card hover:text-fb-text',
     };
 
+    /*
+     * ── WHICH CONTROL A VALUE GETS ──────────────────────────────────────
+     *
+     * Read off the value's own shape, never chosen by hand. Kit DESIGN.md §24
+     * carries the table and the arithmetic behind each threshold; the point of
+     * doing it here is that whoever adds a schema field should not also have to
+     * know where a row of chips stops working.
+     */
+    const STEPPER_MAX_STEPS = 8;
+
+    /*
+     * A schema label is a SENTENCE; a chip wants the name out of it.
+     *
+     * `'Scrolling — the tab slides under a fixed cursor'` is written to be read
+     * once, in a hint or a tooltip, and it is the right thing to have written.
+     * On a chip it is 46 characters where there is room for eight. The half
+     * before the dash is the name, and the whole sentence stays as the title —
+     * so nothing is lost, it just moves to where there is room for it.
+     */
+    function shortOption(label) {
+        const text = String(label === null || label === undefined ? '' : label);
+        const cut = text.split(/\s+—\s+|\s+-\s+/)[0];
+        return cut.trim() || text;
+    }
+
+
+    function controlKind(f) {
+        if (f.type === 'bool') return 'toggle';
+        if (f.type === 'enum') {
+            /*
+             * A list the APP supplies is a select whatever its length: the
+             * board list arrives at runtime and can grow when the reader
+             * installs a view, so nobody gets to lay it out.
+             */
+            if (f.dynamic) return 'select';
+            return (fieldOptions(f).length > c.SEG_MAX_INLINE) ? 'select' : 'segmented';
+        }
+        const span = (Number(f.max) - Number(f.min)) / (Number(f.step) || 1) + 1;
+        return (span <= STEPPER_MAX_STEPS) ? 'stepper' : 'slider';
+    }
+
+    /** The value, and its derived companion, as two things rather than one string. */
+    function readoutParts(key) {
+        const whole = readout(key);
+        const i = whole.indexOf(' → ');
+        if (i < 0) return { value: whole, aside: null };
+        return { value: whole.slice(0, i), aside: '→ ' + whole.slice(i + 3) };
+    }
+
+    /**
+     * What a rack says about itself in its header.
+     *
+     * A derived reading, so the reader can tell what the group is producing
+     * without going through every control in it — kit DESIGN.md §5. Never an
+     * input (§21): everything here is computed from the settings.
+     */
+    function groupAside(id) {
+        if (id === 'basics') {
+            if (!isScroll(S)) return 'TAB FULL SCREEN';
+            if (S.board === 'none') return 'TAB ONLY';
+            return 'TAB ' + Math.round(S.heightPct) + '% OF SCREEN';
+        }
+        if (id === 'reading') {
+            return isPaged(S)
+                ? (S.pageBars * S.rows) + ' BARS PER PAGE'
+                : readoutParts('aheadBeats').value + ' BEATS AHEAD';
+        }
+        if (id === 'look') {
+            const label = { fret: 'FRET', pitch: 'PITCH', both: 'FRET + PITCH', none: 'PLAIN' };
+            return label[S.noteLabel] || null;
+        }
+        return null;
+    }
+
+    /*
+     * ── THE SETTINGS SCREEN ─────────────────────────────────────────────
+     *
+     * Built from the kit, in the same language as the in-player panel. That is
+     * a reversal of the position the kit itself held for eight releases — see
+     * the note on `settings-mount.js` and DESIGN.md §24 — and the argument is
+     * that the kit is an identity rather than a HUD style: two plugins whose
+     * panels match and whose settings screens do not are two plugins that look
+     * related in one place and unrelated everywhere else.
+     *
+     * The SCHEMA does not change. It already declares every option once, with
+     * the `when` predicates the conditional fields need; what changed is what
+     * draws them.
+     */
     function mountSettings(root) {
         if (!root) return null;
         // The settings screen can be the first thing that runs — a cold visit
@@ -2622,253 +2710,216 @@ import * as c from './src/kit/controls.js';
         // when the in-player panel mounts.
         watchTheme();
         root.textContent = '';
-        root.className = 'p-4 space-y-4 text-sm';
+        root.className = 'fbk-sheet';
 
-        const h3 = document.createElement('h3');
-        h3.className = 'text-base font-semibold text-fb-text';
-        h3.textContent = 'Live Tab';
-        root.appendChild(h3);
-        const sub = document.createElement('p');
-        sub.className = 'text-xs text-fb-textDim';
-        sub.textContent = 'A tablature you can read while it moves, with any note '
-            + 'board hosted above it. Hit and miss come from the same judgment the '
-            + 'board uses, so a fret number turns green or red as the gem does — '
-            + 'which needs note detection running with your instrument connected.';
-        root.appendChild(sub);
+        // ── the head: what this is, and what it is looking at ────────────
+        const head = c.el('div', 'fbk-sheet-head');
+        const stack = c.el('div', 'fbk-head-stack');
+        stack.appendChild(c.el('span', 'fbk-title', 'Tab view'));
+        const sub = c.el('span', 'fbk-subtitle');
+        stack.appendChild(sub);
+        head.appendChild(c.el('span', 'fbk-rack-dot'));
+        head.appendChild(stack);
+        root.appendChild(head);
 
-        // ── Presets ──────────────────────────────────────────────────
-        const presetBox = document.createElement('div');
-        presetBox.className = 'space-y-2';
-        const presetHead = document.createElement('div');
-        presetHead.className = 'text-xs uppercase tracking-wide text-fb-textDim';
-        presetHead.textContent = 'Preset';
-        presetBox.appendChild(presetHead);
-        const chips = document.createElement('div');
-        chips.className = 'flex flex-wrap gap-2';
-        const chipEls = [];
-        for (const p of PRESETS) {
-            const b = document.createElement('button');
-            b.type = 'button';
-            b.textContent = p.label;
-            b.title = p.hint;
-            b.addEventListener('click', () => { api.applyPreset(p.id); });
-            chips.appendChild(b);
-            chipEls.push({ id: p.id, el: b });
-        }
-        presetBox.appendChild(chips);
-        const presetHint = document.createElement('span');
-        presetHint.className = CLS.hint;
-        presetBox.appendChild(presetHint);
-        root.appendChild(presetBox);
+        const intro = c.el('p', 'fbk-note',
+            'A tablature you can read while it moves, with any note board hosted '
+            + 'above it. Hit and miss come from the same judgment the board uses, '
+            + 'so a fret number turns green or red as the gem does — which needs '
+            + 'note detection running with your instrument connected.');
+        root.appendChild(intro);
 
-        // ── Fields, grouped ──────────────────────────────────────────
+        // ── PRESET: a pick of five, so it wraps, and it can be marked ────
+        const presetRack = c.rack({ label: 'Preset' });
+        root.appendChild(presetRack.el);
+
+        const reset = c.button('fbk-btn fbk-btn-accent fbk-btn-small', 'Reset',
+            'Put every value back to what this preset says', () => {
+                const id = lastPresetId;
+                if (id) api.applyPreset(id);
+            });
+        presetRack.header.appendChild(reset);
+
+        const presets = c.segmented(
+            PRESETS.map((x) => ({ value: x.id, label: x.label, title: x.hint })),
+            (id) => { lastPresetId = id; api.applyPreset(id); },
+            'Preset',
+        );
+        presetRack.body.appendChild(presets.el);
+        const presetHint = c.el('p', 'fbk-note');
+        presetRack.body.appendChild(presetHint);
+
+        /*
+         * The preset the reader last CHOSE, which is not the same as the one
+         * whose values still hold. Changing one option under `Study` leaves no
+         * preset matching, and the panel still has to be able to say which one
+         * you have edited — and to put it back.
+         */
+        let lastPresetId = activePresetId();
+
+        // ── one rack per group, every control from the schema ────────────
         const controls = [];
-        const groupBoxes = [];
-
-        function addField(parent, f) {
-            const wrap = document.createElement('label');
-            wrap.className = (f.type === 'bool')
-                ? 'flex items-start gap-2 cursor-pointer'
-                : 'block';
-
-            let input;
-            let out = null;
-
-            if (f.type === 'bool') {
-                input = document.createElement('input');
-                input.type = 'checkbox';
-                input.className = CLS.check;
-                wrap.appendChild(input);
-                const txt = document.createElement('span');
-                const name = document.createElement('span');
-                name.className = 'text-fb-text';
-                name.textContent = f.label;
-                txt.appendChild(name);
-                if (f.hint) {
-                    const hint = document.createElement('span');
-                    hint.className = CLS.hint;
-                    hint.textContent = f.hint;
-                    txt.appendChild(hint);
-                }
-                wrap.appendChild(txt);
-            } else if (f.type === 'enum') {
-                const name = document.createElement('span');
-                name.className = CLS.label;
-                name.textContent = f.label;
-                wrap.appendChild(name);
-                input = document.createElement('select');
-                input.className = CLS.select;
-                wrap.appendChild(input);
-                if (f.hint) {
-                    const hint = document.createElement('span');
-                    hint.className = CLS.hint;
-                    hint.textContent = f.hint;
-                    wrap.appendChild(hint);
-                }
-            } else {
-                const name = document.createElement('span');
-                name.className = CLS.label;
-                name.textContent = f.label + ': ';
-                out = document.createElement('b');
-                name.appendChild(out);
-                if (f.unit) name.appendChild(document.createTextNode(' ' + f.unit));
-                wrap.appendChild(name);
-                input = document.createElement('input');
-                input.type = 'range';
-                input.className = CLS.range;
-                input.min = String(f.min);
-                input.max = String(f.max);
-                input.step = String(f.step || ((f.type === 'int') ? 1 : 0.1));
-                wrap.appendChild(input);
-                if (f.hint) {
-                    const hint = document.createElement('span');
-                    hint.className = CLS.hint;
-                    hint.textContent = f.hint;
-                    wrap.appendChild(hint);
-                }
-            }
-
-            const push = () => {
-                const value = (f.type === 'bool') ? input.checked
-                    : (f.type === 'enum') ? input.value : Number(input.value);
-                api.set({ [f.key]: value });
-            };
-            input.addEventListener('change', push);
-            if (f.type !== 'enum') input.addEventListener('input', push);
-
-            parent.appendChild(wrap);
-            controls.push({ f: f, wrap: wrap, input: input, out: out });
-        }
+        const racks = [];
 
         for (const g of GROUPS) {
             const fields = SCHEMA.filter((f) => f.group === g.id);
             if (!fields.length) continue;
+            const rack = c.rack({ label: g.label });
+            root.appendChild(rack.el);
+            racks.push({ g, rack, fields });
 
-            let container;
-            let wrapper;
-            if (g.advanced) {
-                const det = document.createElement('details');
-                det.className = 'border border-fb-border rounded';
-                const sum = document.createElement('summary');
-                sum.className = 'px-3 py-2 cursor-pointer text-xs uppercase '
-                    + 'tracking-wide text-fb-textDim select-none';
-                sum.textContent = g.label;
-                det.appendChild(sum);
-                container = document.createElement('div');
-                container.className = 'px-3 pb-3 space-y-3';
-                det.appendChild(container);
-                root.appendChild(det);
-                wrapper = det;
-            } else {
-                container = document.createElement('div');
-                container.className = 'space-y-3';
-                root.appendChild(container);
-                wrapper = container;
+            for (const f of fields) {
+                const kind = controlKind(f);
+                const box = c.field({ label: f.label });
+                let ctl = null;
+
+                if (kind === 'toggle') {
+                    ctl = c.toggle(f.label, f.hint || null, (on) => api.set({ [f.key]: on }));
+                    /* The toggle carries the name itself, so the field does not
+                       repeat it — one label per control, never two. */
+                    box.setLabel('');
+                } else if (kind === 'segmented') {
+                    ctl = c.segmented(
+                        fieldOptions(f).map(([v, label]) => ({ value: v, label: shortOption(label), title: label })),
+                        (v) => api.set({ [f.key]: v }),
+                        f.label,
+                    );
+                } else if (kind === 'select') {
+                    ctl = c.select(
+                        fieldOptions(f).map(([v, label]) => ({ value: v, label })),
+                        (v) => api.set({ [f.key]: v }),
+                        { ariaLabel: f.label, placeholder: 'Choose' },
+                    );
+                } else if (kind === 'stepper') {
+                    ctl = c.stepper({
+                        label: f.label,
+                        value: S[f.key],
+                        min: f.min, max: f.max, step: f.step || 1,
+                        unit: f.unit || '',
+                        onChange: (v) => api.set({ [f.key]: v }),
+                    });
+                    box.setLabel('');
+                } else {
+                    ctl = c.slider({
+                        min: f.min, max: f.max, step: f.step || 1,
+                        unit: f.unit || '',
+                        ariaLabel: f.label,
+                        onInput: (v) => api.set({ [f.key]: v }),
+                    });
+                }
+
+                box.body.appendChild(ctl.el);
+                rack.body.appendChild(box.el);
+                if (f.hint && kind !== 'toggle') {
+                    const hint = c.el('p', 'fbk-note', f.hint);
+                    rack.body.appendChild(hint);
+                    controls.push({ f, kind, ctl, box, hint });
+                } else {
+                    controls.push({ f, kind, ctl, box, hint: null });
+                }
             }
-            for (const f of fields) addField(container, f);
-            groupBoxes.push({ fields: fields, wrapper: wrapper });
         }
 
-        // ── Reset ────────────────────────────────────────────────────
-        const foot = document.createElement('div');
-        foot.className = 'flex items-center gap-3 pt-1';
-        const reset = document.createElement('button');
-        reset.type = 'button';
-        reset.className = 'px-3 py-1.5 rounded bg-fb-card hover:bg-fb-border text-fb-text';
-        reset.textContent = 'Reset to defaults';
-        reset.addEventListener('click', () => { api.reset(); });
-        foot.appendChild(reset);
+        // ── the foot: what happens to what you just changed ──────────────
+        const foot = c.el('div', 'fbk-sheet-foot');
+        const status = c.statusLine();
+        foot.appendChild(status.el);
 
         // Reporting a rendering bug means saying what the chart looks like from
         // the inside, and nobody can be asked to open a developer console to do
         // it. One button, one paste.
-        const copy = document.createElement('button');
-        copy.type = 'button';
-        copy.className = 'px-3 py-1.5 rounded bg-fb-cardMuted hover:bg-fb-card '
-            + 'text-fb-text border border-fb-border';
-        copy.textContent = 'Copy diagnostics';
-        copy.title = 'Copies a snapshot of the plugin, the app and this chart, '
-            + 'to paste into a bug report.';
-        copy.addEventListener('click', () => {
-            const text = JSON.stringify(diagnostics(), null, 2);
-            const done = (ok) => {
-                copy.textContent = ok ? 'Copied' : 'Press Ctrl+C';
-                setTimeout(() => { copy.textContent = 'Copy diagnostics'; }, 2500);
-            };
-            if (navigator.clipboard && navigator.clipboard.writeText) {
-                navigator.clipboard.writeText(text).then(() => done(true), () => fallback());
-            } else {
-                fallback();
-            }
-            function fallback() {
-                // No clipboard permission: put it somewhere it can be copied by
-                // hand rather than losing it.
-                const box = document.createElement('textarea');
-                box.value = text;
-                box.style.cssText = 'position:fixed;left:-9999px;top:0';
-                document.body.appendChild(box);
-                box.select();
-                let ok = false;
-                try { ok = document.execCommand('copy'); } catch (_) { ok = false; }
-                box.remove();
-                if (!ok) console.log('[' + ID + '] diagnostics', text);
-                done(ok);
-            }
-        });
+        const copy = c.button('fbk-btn fbk-btn-small', 'Copy diagnostics',
+            'Copies a snapshot of the plugin, the app and this chart, to paste '
+            + 'into a bug report.', () => {
+                const text = JSON.stringify(diagnostics(), null, 2);
+                const done = (ok) => {
+                    copy.textContent = ok ? 'Copied' : 'Press Ctrl+C';
+                    setTimeout(() => { copy.textContent = 'Copy diagnostics'; }, 2500);
+                };
+                if (navigator.clipboard && navigator.clipboard.writeText) {
+                    navigator.clipboard.writeText(text).then(() => done(true), () => fallback());
+                } else {
+                    fallback();
+                }
+                function fallback() {
+                    // No clipboard permission: put it somewhere it can be copied
+                    // by hand rather than losing it.
+                    const box2 = document.createElement('textarea');
+                    box2.value = text;
+                    box2.style.cssText = 'position:fixed;left:-9999px;top:0';
+                    document.body.appendChild(box2);
+                    box2.select();
+                    let ok = false;
+                    try { ok = document.execCommand('copy'); } catch (_) { ok = false; }
+                    box2.remove();
+                    if (!ok) console.log('[' + ID + '] diagnostics', text);
+                    done(ok);
+                }
+            });
         foot.appendChild(copy);
-
-        const status = document.createElement('span');
-        status.className = 'text-xs text-fb-textDim';
-        foot.appendChild(status);
         root.appendChild(foot);
 
         const panel = {
             root: root,
             sync() {
-                const active = activePresetId();
-                for (const c of chipEls) {
-                    const on = c.id === active;
-                    c.el.className = CLS.chip + (on ? CLS.chipOn : CLS.chipOff);
-                    // Not a utility and not a token: see inkOn().
-                    c.el.style.color = on ? inkOn('primary') : '';
-                }
-                const p = PRESETS.find((x) => x.id === active);
-                presetHint.textContent = p ? p.hint
-                    : 'Custom — your own mix of the options below.';
+                sub.textContent = 'Changes apply live · saved per song';
 
-                for (const c of controls) {
-                    if (c.input) c.input.style.accentColor = ink('primary');
-                    const live = fieldLive(c.f);
-                    c.wrap.style.display = live ? '' : 'none';
+                // ── the preset row ───────────────────────────────────────
+                const active = activePresetId();
+                if (active) lastPresetId = active;
+                presets.set(active);
+                /*
+                 * EDITED is a mark on the chip, not a chip of its own: "this is
+                 * the preset you picked" and "you have changed something under
+                 * it" are two facts about the same option.
+                 */
+                presets.mark(active ? null : lastPresetId);
+                presetRack.setAside(active ? null : 'EDITED');
+                reset.hidden = !!active || !lastPresetId;
+                const p2 = PRESETS.find((x) => x.id === (active || lastPresetId));
+                presetHint.textContent = active
+                    ? (p2 ? p2.hint : '')
+                    : (p2 ? 'Your own mix, from ' + p2.label + '. Reset puts it back.'
+                          : 'Custom — your own mix of the options below.');
+
+                // ── every control ────────────────────────────────────────
+                for (const k of controls) {
+                    const live = fieldLive(k.f);
+                    k.box.el.hidden = !live;
+                    if (k.hint) k.hint.hidden = !live;
                     if (!live) continue;
-                    if (c.f.type === 'bool') {
-                        c.input.checked = !!S[c.f.key];
-                    } else if (c.f.type === 'enum') {
-                        const opts = fieldOptions(c.f);
-                        const same = c.input.options.length === opts.length
-                            && opts.every((o, i) => c.input.options[i].value === o[0]);
-                        if (!same) {
-                            c.input.textContent = '';
-                            for (const opt of opts) {
-                                const o = document.createElement('option');
-                                o.value = opt[0];
-                                o.textContent = opt[1];
-                                c.input.appendChild(o);
-                            }
-                        }
-                        c.input.value = String(S[c.f.key]);
+
+                    if (k.kind === 'toggle') {
+                        k.ctl.set(!!S[k.f.key]);
+                    } else if (k.kind === 'segmented') {
+                        k.ctl.set(S[k.f.key]);
+                    } else if (k.kind === 'select') {
+                        const opts = fieldOptions(k.f);
+                        k.ctl.rebuild(opts.map((o) => o[0]).join('|'),
+                            opts.map(([v, label]) => ({ value: v, label })));
+                        k.ctl.set(S[k.f.key]);
+                    } else if (k.kind === 'stepper') {
+                        k.ctl.set(S[k.f.key]);
                     } else {
-                        c.input.value = String(S[c.f.key]);
-                        if (c.out) c.out.textContent = readout(c.f.key);
+                        const parts = readoutParts(k.f.key);
+                        k.ctl.set(S[k.f.key]);
+                        k.ctl.setAside(parts.aside);
                     }
                 }
-                // A group with nothing left to show is a heading over a void.
-                for (const box of groupBoxes) {
-                    const any = box.fields.some(fieldLive);
-                    box.wrapper.style.display = any ? '' : 'none';
+
+                // ── a rack with nothing left in it is a heading over a void ─
+                for (const r of racks) {
+                    const any = r.fields.some(fieldLive);
+                    r.rack.el.hidden = !any;
+                    r.rack.setAside(any ? (groupAside(r.g.id) || '') : '');
                 }
-                status.textContent = (!S.enabled && fieldLive(FIELD.enabled))
-                    ? 'The tab is currently hidden.' : '';
+
+                status.set(
+                    (!S.enabled && fieldLive(FIELD.enabled)) ? 'warn' : 'ok',
+                    (!S.enabled && fieldLive(FIELD.enabled))
+                        ? 'The tab is currently hidden — the board above has the whole player.'
+                        : 'Changes apply live, and are saved per song.',
+                );
             },
         };
         panels.add(panel);

@@ -13,10 +13,25 @@
  * a user actually hits is a disabled plugin, and "Loading…" for eternity
  * tells them nothing about it.
  *
- * NOTE ON WHERE FORMS BELONG. A settings PAGE is a form and should look like
- * one: it is the right home for the exact values a panel's steppers cannot
- * reach, and for store maintenance. The kit's game-HUD rules are about the
- * in-player panel, not about this. Use the host's own utility classes here.
+ * NOTE ON WHERE FORMS BELONG — REVISED, and the old position is worth keeping
+ * visible because the code followed it for eight releases.
+ *
+ * It used to say: a settings PAGE is a form and should look like one, so use
+ * the host's own utility classes here and keep the kit for the in-player panel.
+ * The reasoning was that a form is a different genre from a HUD.
+ *
+ * That was wrong about what the kit IS. The kit is not a HUD style; it is this
+ * author's visual identity across their plugins, and a settings screen is
+ * where a reader spends the most unhurried time with it. Two plugins whose
+ * panels match and whose settings screens do not are two plugins that look
+ * related in the player and unrelated everywhere else — which is most of what
+ * an identity is for.
+ *
+ * So: the rack language applies here too. The genre difference is real but it
+ * is about SIZE and PACE, not about language — a settings screen can afford
+ * wider wells, more prose per control and a select where a panel would want a
+ * stepper, and it never has to be read at a glance with a guitar in the way.
+ * Same parts, more room.
  */
 
 const DEFAULT_TRIES = 40;

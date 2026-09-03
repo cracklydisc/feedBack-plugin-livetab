@@ -3031,3 +3031,66 @@
     letter-spacing: var(--fbk-t-num-track, 0.02em);
     color: rgb(var(--fbk-dim, 138 160 200));
 }
+
+/* ═══ 25. The sheet — the settings screen, same language, more room ══════
+ *
+ * §24. The kit held the opposite position for eight releases: a settings page
+ * is a form, use the host's utility classes, keep this for the player. Wrong
+ * about what the kit is — it is one author's identity across their plugins,
+ * and the settings screen is where a reader spends the most unhurried time
+ * with it.
+ *
+ * The genre difference is real and it is about SIZE AND PACE. A sheet is not
+ * 360px wide, it is not read at a glance with a guitar in the way, and it is
+ * the one place where the careful paragraph a schema field carries belongs —
+ * which is why `.fbk-note` earns its keep here and `.fbk-hint` still does not
+ * belong in a panel (see the withdrawal note above; the report behind it was
+ * about a HUD, not about this).
+ */
+
+.fbk-sheet {
+    box-sizing: border-box;
+    display: flex;
+    flex-direction: column;
+    gap: var(--fbk-s-5, 10px);
+    /*
+     * Wide enough for a paragraph and no wider. A settings column past about
+     * 70 characters stops being read and starts being skimmed, and every
+     * control in here is full width, so the measure IS the column.
+     */
+    max-width: calc(40 * var(--fbk-s-6, 14px));
+    padding: var(--fbk-s-6, 14px);
+    color: rgb(var(--fbk-text, 232 238 252));
+    font: var(--fbk-t-body, 500 11px/1.45 sans-serif);
+}
+
+/*
+ * The head, hatched like the panel's own ears — the one place the sheet says
+ * out loud that it is the same object as the thing in the player.
+ */
+.fbk-sheet-head,
+.fbk-sheet-foot {
+    box-sizing: border-box;
+    display: flex;
+    align-items: center;
+    gap: var(--fbk-s-4, 8px);
+    padding: var(--fbk-s-5, 10px) var(--fbk-s-5, 10px);
+    border-radius: var(--fbk-radius, 14px);
+    border: var(--fbk-hairline, 1px) solid rgb(var(--fbk-border, 42 46 58));
+    /*
+     * The same hatch the panel's ears wear, written out rather than reached
+     * for through a property nothing sets — `--fbk-hatch` was invented in the
+     * first draft of this and the theme has never published it. Longhands, so
+     * nothing downstream resets the clip (§ the zone gap).
+     */
+    background-color: rgb(var(--fbk-surface, 12 15 22));
+    background-image: repeating-linear-gradient(135deg,
+        rgb(var(--fbk-border, 42 46 58) / 0.75) 0 2px,
+        rgb(var(--fbk-border, 42 46 58) / 0) 2px 6px);
+}
+
+.fbk-sheet-foot { justify-content: space-between; }
+
+/* A rack on a sheet has the room the panel could not give it. */
+.fbk-sheet .fbk-rack { width: 100%; }
+.fbk-sheet .fbk-field { width: 100%; }
