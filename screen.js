@@ -1941,7 +1941,18 @@ import * as c from './src/kit/controls.js';
             const name = (S.noteLabel === 'fret') ? '' : nameOf(s, it.n.f);
             let label = fretText;
             let aside = '';
-            if (it.n.mt) {
+            /*
+             * A DEAD NOTE IS AN `×` IN THE HEAD — which is how tablature has
+             * always written it, and `fhm` belongs here with `mt`.
+             *
+             * A fret-hand mute is a dead note: the string is damped by the
+             * fretting hand and there is no pitch to read. It used to print a
+             * small `✕` ABOVE a head that still showed a fret number, which
+             * says two contradictory things — "play the 7" and "there is no
+             * pitch" — and says the second one in the quietest ink on the
+             * staff. One idea, one place, and the place standard notation uses.
+             */
+            if (it.n.mt || it.n.fhm) {
                 label = '×';
             } else if (S.noteLabel === 'name') {
                 label = name || fretText;
@@ -1952,7 +1963,7 @@ import * as c from './src/kit/controls.js';
                 aside = fretText;
             }
             // A held note is written in brackets: it is sounding, not played.
-            if (tiedIn[oi] && !it.n.mt) label = '(' + label + ')';
+            if (tiedIn[oi] && !it.n.mt && !it.n.fhm) label = '(' + label + ')';
             ctx.font = '700 ' + Math.round(fs) + 'px ' + kitFont('num');
 
             // A circle sized for one digit crowds two. The head grows sideways
@@ -2074,17 +2085,57 @@ import * as c from './src/kit/controls.js';
                 }
             }
 
-            // Marks that sit over the head share one row, so a tapped accented
-            // note does not print two glyphs in the same spot.
+            /*
+             * ── WHAT YOU DO WITH YOUR HANDS, over the head ──────────────
+             *
+             * `T` for a tap and a drawn accent wedge, in standard tablature
+             * positions: both sit above the note they belong to, and both are
+             * CONTENT rather than a hint — they change how you strike that
+             * note, so they get the reading ink and a size taken off the fret
+             * digit instead of a fixed nine pixels in the quietest grey on the
+             * staff. Reported as not visible enough, and it was: 9px of `dim`
+             * against a coloured string is the least legible thing here.
+             *
+             * The accent is DRAWN, not the character `>`. In a mono face that
+             * glyph is punctuation on the text baseline — it reads as a stray
+             * bracket, where an accent is a wedge with weight. Same argument
+             * as the bend's arrowhead.
+             *
+             * Marks share one row, so a tapped accented note does not print
+             * two things in the same spot.
+             */
             if (S.showTech && fit > 0.72) {
-                const above = [];
-                if (it.n.tp) above.push('T');
-                if (it.n.ac) above.push('>');
-                if (it.n.fhm) above.push('\u2715');
-                if (above.length) {
-                    ctx.font = '700 ' + Math.round(9 * k) + 'px ' + kitFont('num');
-                    ctx.fillStyle = kitInk('dim');
-                    fillInkCentred(ctx, above.join(' '), x, y - r - 6 * k);
+                const markY = y - r - 7 * k;
+                const glyphs = [];
+                if (it.n.tp) glyphs.push('T');
+                const wedge = !!it.n.ac;
+                if (glyphs.length || wedge) {
+                    ctx.save();
+                    ctx.fillStyle = kitInk('text');
+                    ctx.strokeStyle = kitInk('text');
+                    /* Off the fret digit, so it scales with the note size the
+                       reader chose rather than staying 9px for ever. */
+                    const ms = Math.max(9, fs * 0.62);
+                    let cx = x;
+                    if (glyphs.length && wedge) cx = x - ms * 0.55;
+                    if (glyphs.length) {
+                        ctx.font = '800 ' + Math.round(ms) + 'px ' + kitFont('num');
+                        fillInkCentred(ctx, glyphs.join(''), cx, markY);
+                    }
+                    if (wedge) {
+                        const wx = (glyphs.length ? x + ms * 0.55 : x);
+                        const w = ms * 0.5;
+                        const h = ms * 0.34;
+                        ctx.lineWidth = Math.max(1.6, ms * 0.16);
+                        ctx.lineCap = 'round';
+                        ctx.lineJoin = 'round';
+                        ctx.beginPath();
+                        ctx.moveTo(wx - w, markY - h);
+                        ctx.lineTo(wx + w, markY);
+                        ctx.lineTo(wx - w, markY + h);
+                        ctx.stroke();
+                    }
+                    ctx.restore();
                 }
             }
         }
