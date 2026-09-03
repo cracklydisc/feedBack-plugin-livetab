@@ -1,7 +1,7 @@
 {
   "id": "livetab",
   "name": "Live Tab",
-  "version": "0.33.0",
+  "version": "0.34.0",
   "script": "screen.js",
   "scriptType": "module",
   "category": "practice",

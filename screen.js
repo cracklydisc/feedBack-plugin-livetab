@@ -763,6 +763,39 @@ import * as c from './src/kit/controls.js';
      */
     const SUB_MIN_PX = 18;
 
+    /**
+     * Draw text centred on the INK, not on the em box.
+     *
+     * `textBaseline = 'middle'` centres the font's em box, and a digit's ink is
+     * not in the middle of that box: `5` has no descender, so the em box
+     * reserves room below it that the glyph never uses and the digit rides
+     * high. Inside a circle that is immediately visible — reported as the
+     * number not being in the centre of the circumference — and the old answer
+     * was a hand-tuned `y + 0.5`, which is a fudge for one font at one size
+     * that goes wrong at every other.
+     *
+     * `actualBoundingBoxAscent/Descent` measure the glyph that will actually be
+     * painted, so the correction is exact for whatever is inside: a digit, two
+     * digits, `A#`, a bracketed `(7)`, an `H`. Which is the requirement —
+     * whatever is in there is in the true centre.
+     *
+     * Falls back to `middle` where the metrics are missing, because a slightly
+     * high digit is better than a digit at the baseline.
+     */
+    function fillInkCentred(ctx, text, cx, cy, align) {
+        ctx.textAlign = align || 'center';
+        const m = ctx.measureText(text);
+        const up = m.actualBoundingBoxAscent;
+        const down = m.actualBoundingBoxDescent;
+        if (typeof up === 'number' && typeof down === 'number') {
+            ctx.textBaseline = 'alphabetic';
+            ctx.fillText(text, cx, cy + (up - down) / 2);
+            return;
+        }
+        ctx.textBaseline = 'middle';
+        ctx.fillText(text, cx, cy);
+    }
+
     function beatDivisions(pxPerBeat) {
         if (S.rhythmGrid === 'off') return 0;
         if (S.rhythmGrid !== 'auto') return 1;
@@ -1815,9 +1848,7 @@ import * as c from './src/kit/controls.js';
 
                 ctx.font = '700 ' + Math.round(fs * 0.74) + 'px ' + kitFont('num');
                 ctx.fillStyle = col;
-                ctx.textAlign = 'left';
-                ctx.textBaseline = 'middle';
-                ctx.fillText(txt, ax + ah + 3 * k, topY);
+                fillInkCentred(ctx, txt, ax + ah + 3 * k, topY, 'left');
                 ctx.restore();
             }
         }
@@ -1922,7 +1953,7 @@ import * as c from './src/kit/controls.js';
             }
             // A held note is written in brackets: it is sounding, not played.
             if (tiedIn[oi] && !it.n.mt) label = '(' + label + ')';
-            ctx.font = '700 ' + Math.round(fs) + 'px "JetBrains Mono", ui-monospace, monospace';
+            ctx.font = '700 ' + Math.round(fs) + 'px ' + kitFont('num');
 
             // A circle sized for one digit crowds two. The head grows sideways
             // into a capsule instead, so 14 and 16 keep the same breathing room
@@ -1954,9 +1985,7 @@ import * as c from './src/kit/controls.js';
             ctx.setLineDash([]);
 
             ctx.fillStyle = solid ? '#08101c' : ink;
-            ctx.textAlign = 'center';
-            ctx.textBaseline = 'middle';
-            ctx.fillText(label, x, y + 0.5);
+            fillInkCentred(ctx, label, x, y);
 
             // The second label, beside the head. Sideways is the only
             // direction with room: at six strings the heads already almost
@@ -1973,8 +2002,7 @@ import * as c from './src/kit/controls.js';
                     ctx.fillStyle = 'rgba(6,9,15,0.88)';
                     ctx.fillRect(ax - 1.5 * k, y - 6.5 * k, aw + 3 * k, 13 * k);
                     ctx.fillStyle = 'rgba(255,255,255,0.82)';
-                    ctx.textAlign = 'left';
-                    ctx.fillText(aside, ax, y + 0.5);
+                    fillInkCentred(ctx, aside, ax, y, 'left');
                 }
             }
             ctx.restore();
@@ -1984,6 +2012,20 @@ import * as c from './src/kit/controls.js';
             const prev = prevOnString[s];
             if (S.showTech && (it.n.ho || it.n.po) && prev != null && fit > 0.55) {
                 const span = x - prev;
+                /*
+                 * THE LETTER GOES WITH THE ARC, or neither goes.
+                 *
+                 * They had separate guards — the arc needed `span < 90 * k`
+                 * and the letter only `fit > 0.8` — so at wide spacing the arc
+                 * was refused and an `H` was left floating between two notes
+                 * with nothing joining them. A letter alone says a technique
+                 * happened somewhere near here, which is the one thing a tab
+                 * must not say.
+                 *
+                 * Found by the showcase pack the moment there was a chart with
+                 * a hammer-on in it, which is the whole reason that pack
+                 * exists.
+                 */
                 if (span > 3 && span < 90 * k) {
                     ctx.save();
                     /*
@@ -1999,15 +2041,14 @@ import * as c from './src/kit/controls.js';
                     ctx.moveTo(prev + r * 0.5, y + lift * 0.35);
                     ctx.quadraticCurveTo((prev + x) / 2, y + lift, x - r * 0.5, y + lift * 0.35);
                     ctx.stroke();
+                    /* Inside the arc's guard now, so the two cannot disagree. */
                     if (fit > 0.8) {
                         /* Mono, like every other single character on the
                            staff: an H beside a fret number in a different face
                            reads as two different kinds of writing. */
                         ctx.font = '700 ' + Math.round(9 * k) + 'px ' + kitFont('num');
                         ctx.fillStyle = kitInk('dim');
-                        ctx.textAlign = 'center';
-                        ctx.textBaseline = 'middle';
-                        ctx.fillText(it.n.ho ? 'H' : 'P', (prev + x) / 2, y + lift * 1.25);
+                        fillInkCentred(ctx, it.n.ho ? 'H' : 'P', (prev + x) / 2, y + lift * 1.25);
                     }
                     ctx.restore();
                 }
@@ -2043,9 +2084,7 @@ import * as c from './src/kit/controls.js';
                 if (above.length) {
                     ctx.font = '700 ' + Math.round(9 * k) + 'px ' + kitFont('num');
                     ctx.fillStyle = kitInk('dim');
-                    ctx.textAlign = 'center';
-                    ctx.textBaseline = 'middle';
-                    ctx.fillText(above.join(' '), x, y - r - 6 * k);
+                    fillInkCentred(ctx, above.join(' '), x, y - r - 6 * k);
                 }
             }
         }
