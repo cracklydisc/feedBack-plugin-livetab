@@ -828,6 +828,75 @@ import * as c from './src/kit/controls.js';
         ctx.fillText(text, cx, cy);
     }
 
+    /**
+     * UN SOLO BADGE PER TUTTI I SIMBOLI DI TECNICA.
+     *
+     * `H` e `P` stavano dentro una pillola con due gambe; `T` e l'accento erano
+     * glifi nudi appoggiati sopra la testa, in un altro peso e in un altro
+     * inchiostro. Tre disegni per la stessa categoria di informazione — "cosa
+     * fai con le mani su questa nota" — e il lettore deve imparare tre volte
+     * la stessa lezione. Chiesto esplicitamente: stessa punteggiatura per tutti
+     * i simboli.
+     *
+     * Quindi: un cerchio scuro, un anello in `dim`, il simbolo in `text`. Lo
+     * stesso piatto scuro delle targhette di battuta e di sezione, cosi' i
+     * segni si leggono come una famiglia e restano visibili anche sopra una
+     * corda colorata — che era il difetto dei glifi nudi.
+     *
+     * L'accento e' DISEGNATO, non il carattere `>`: in un font mono quel glifo
+     * e' punteggiatura sulla baseline e si legge come una parentesi persa,
+     * mentre un accento e' un cuneo con del peso. Stesso argomento della punta
+     * di freccia del bend. Sta dentro il badge come gli altri, percio' la
+     * famiglia regge.
+     */
+    function techBadge(ctx, cx, cy, br, glyph) {
+        ctx.save();
+        ctx.beginPath();
+        ctx.arc(cx, cy, br, 0, Math.PI * 2);
+        ctx.fillStyle = 'rgba(9,13,22,0.92)';
+        ctx.fill();
+        ctx.strokeStyle = kitInk('dim', 0.9);
+        ctx.lineWidth = Math.max(1, br * 0.14);
+        ctx.stroke();
+
+        if (glyph === '>') {
+            const w = br * 0.42;
+            const h = br * 0.44;
+            ctx.strokeStyle = kitInk('text');
+            ctx.lineWidth = Math.max(1.4, br * 0.22);
+            ctx.lineCap = 'round';
+            ctx.lineJoin = 'round';
+            ctx.beginPath();
+            ctx.moveTo(cx - w * 0.8, cy - h);
+            ctx.lineTo(cx + w, cy);
+            ctx.lineTo(cx - w * 0.8, cy + h);
+            ctx.stroke();
+        } else {
+            ctx.fillStyle = kitInk('text');
+            ctx.font = '800 ' + Math.round(br * 1.16) + 'px ' + kitFont('num');
+            fillInkCentred(ctx, glyph, cx, cy);
+        }
+        ctx.restore();
+    }
+
+    /**
+     * Il raggio del badge, in UN SOLO posto.
+     *
+     * Lo leggono il disegno e il calcolo dello spazio da riservare in alto, e
+     * due copie della stessa costante sono due copie che divergono al primo
+     * ritocco — lo spazio riservato per un badge di una misura e il badge
+     * disegnato di un'altra. E' la stessa forma dell'errore del font impostato
+     * lontano dalla misura: una grandezza usata in due stati.
+     */
+    function techBadgeR(r) {
+        return Math.max(8, r * 0.56);
+    }
+
+    /** Quanto sale sopra il centro di una testa la pila arco + badge. */
+    function techReach(r) {
+        return r * 0.9 + Math.max(5, r * 0.45) + 2 * techBadgeR(r);
+    }
+
     function beatDivisions(pxPerBeat) {
         if (S.rhythmGrid === 'off') return 0;
         if (S.rhythmGrid !== 'auto') return 1;
@@ -1449,32 +1518,90 @@ import * as c from './src/kit/controls.js';
         const headWanted = 9 * k * fit * S.noteScale;
         const headMax = headWanted * 1.16;
 
-        // Everything written above the strings needs its own lane, or a chord
-        // change on a downbeat prints its name straight through the bar number,
-        // and a section mark through both. One tier each, and the headroom is
-        // only as deep as the tiers actually in use.
-        const wantChord = S.showChords;
-        const wantSect = S.showSections;
-        const tiers = 1 + (wantChord ? 1 : 0) + (wantSect ? 1 : 0);
         /*
-         * LO SPAZIO IN ALTO DEVE CONTENERE ANCHE LE TESTE.
+         * Lo spazio sotto le corde si dichiara QUI, prima della pila di corsie.
          *
-         * Era calcolato solo sulle righe scritte sopra le corde — numero di
-         * battuta, accordo, sezione — e una testa sulla corda piu' alta sporge
-         * di `headMax` sopra la sua riga. Con una scala nota grande finiva
-         * dentro il numero di battuta: segnalato come le note sul mi cantino
-         * che coprono i dati in alto.
+         * `gapFor` lo legge per sapere quanta altezza resta alle corde, e un
+         * `const` letto prima della sua riga non e' `undefined`: e' un
+         * ReferenceError, cioe' ogni frame perso e la staffa vuota. E' lo
+         * stesso modo in cui `beatsPerSec` e `r` hanno portato via la vista
+         * pagina — un identificatore usato dove non c'e' ancora.
          *
-         * `headMax` e' il raggio massimo che una testa raggiunge qui, quindi e'
-         * la misura giusta: lo spazio non e' "un po' di aria", e' quanto la
-         * cosa piu' alta occupa davvero.
+         * In ordine: le parentesi del palm mute, poi le parole.
          */
-        const headroom = Math.max((6 + tiers * 12) * k, headMax + 8 * k);
-        // Below the strings, in order: the palm-mute brackets, then the words.
         const footroom = headMax + 6 * k
             + (S.showPM ? 15 * k : 0)
             + (S.showLyrics ? 15 * k : 0)
             + 4 * k;
+
+        // Everything written above the strings needs its own lane, or a chord
+        // change on a downbeat prints its name straight through the bar number,
+        // and a section mark through both. One tier each.
+        const wantChord = S.showChords;
+        const wantSect = S.showSections;
+
+        /*
+         * LE CORSIE SI COSTRUISCONO VERSO L'ALTO, PARTENDO DALLE TESTE.
+         *
+         * Erano ancorate a `staffTop` con offset FISSI — il numero di battuta a
+         * 10k sopra la prima corda — mentre una testa sulla corda piu' alta
+         * sporge del proprio raggio sopra la sua riga, e il badge di tecnica in
+         * cima all'arco sale piu' del doppio. A qualunque scala nota sopra il
+         * minimo il numero finiva dentro le note.
+         *
+         * E allargare lo spazio in alto da solo non serviva a niente: e' il
+         * primo tentativo che ho fatto, ed e' tornata la stessa segnalazione.
+         * `staffTop` scendeva e le corsie scendevano con lui, tenendosi i loro
+         * 10k. Nella vista pagina c'erano 42k di spazio sopra la prima corda e
+         * la corsia stava a 10: il problema non era la stanza, era dove avevo
+         * messo i mobili.
+         *
+         * Percio' due misure separate, ognuna con il suo compito:
+         *
+         *  - `headroom` e' il MINIMO da riservare, e determina quanto resta
+         *    alle corde. Tenuto basso, cosi' le note non rimpiccioliscono.
+         *  - la posizione delle corsie usa l'aria VERA sopra la prima corda —
+         *    `headroom` piu' quella che l'incolonnamento centrato lascia in
+         *    piu' — e prende quanto le serve fino a esaurirla.
+         *
+         * Su una staffa sola quell'aria e' abbondante: le corsie salgono al
+         * massimo e la testa resta grande, cioe' il "livello piu' largo" senza
+         * pagarlo. In vista pagina l'aria e' quella minima e le corsie stanno
+         * appena sopra le teste, che e' comunque piu' di prima.
+         *
+         * Le targhette sono alte 12k (`lane ± 6k`) e la linea di battuta parte
+         * da `laneBar - 6k`, quindi si allunga da sola quando la pila sale.
+         */
+        const CHIP_HALF = 6;
+        const LANE_STEP = 15;
+        const HEAD_AIR = 7;
+        /* Il minimo: la targhetta di battuta sopra il bordo della testa. */
+        const barMin = (rHead) => rHead * 1.16 + (HEAD_AIR + CHIP_HALF) * k;
+        /* L'ideale: sopra il badge di tecnica in cima al suo arco. */
+        const barWant = (rHead) => techReach(rHead) + (HEAD_AIR + CHIP_HALF) * k;
+        const lanesUp = ((wantChord ? LANE_STEP : 0) + (wantSect ? LANE_STEP : 0)) * k;
+        const roomFor = (rHead) => barMin(rHead) + lanesUp + (CHIP_HALF + 2) * k;
+
+        /*
+         * Un giro di raffinamento, perche' la testa VERA non e' quella
+         * desiderata: `headR` e' limitato dalla distanza fra due corde, che
+         * dipende dallo spazio in alto, che dipende dalla testa. Riservare per
+         * `headWanted` in vista pagina significa rubare spazio alle corde e
+         * ottenere note piu' piccole di quelle per cui si e' riservato.
+         *
+         * Si parte dal limite superiore, si guarda quanto grande viene la testa
+         * con quello spazio, e si riserva per quella. La composizione e' una
+         * contrazione forte (|d headroom / d headR| ~ 0.1 su sei corde), quindi
+         * un giro basta.
+         */
+        const gapFor = (room) => Math.min(
+            ROW_GAP_MAX * k,
+            Math.max(1, band.height - room - footroom) / Math.max(1, lines - 1)
+        );
+        const headroom = roomFor(Math.min(
+            headWanted,
+            gapFor(roomFor(headWanted)) * 0.46
+        ));
         const innerH = Math.max(1, band.height - headroom - footroom);
         const gap = Math.min(ROW_GAP_MAX * k, innerH / Math.max(1, lines - 1));
 
@@ -1494,9 +1621,21 @@ import * as c from './src/kit/controls.js';
         const yLine = (l) => staffTop + rowFor(l, lines, S.highStringOnTop) * gap;
         const yAt = (s) => yLine(s + rowOffset);
 
-        const laneBar = staffTop - 10 * k;
-        const laneChord = staffTop - 22 * k;
-        const laneSect = staffTop - (wantChord ? 34 : 22) * k;
+        /*
+         * Qui si spende l'aria che c'e' davvero: `staffTop - band.top` e' il
+         * minimo riservato PIU' quello che il centramento ha lasciato sopra.
+         * Le corsie salgono fino all'ideale se ci sta, mai sotto il minimo.
+         */
+        const laneRoom = staffTop - band.top;
+        const dBar = Math.max(
+            barMin(headR),
+            Math.min(barWant(headR), laneRoom - lanesUp - (CHIP_HALF + 2) * k)
+        );
+        const dChord = wantChord ? dBar + LANE_STEP * k : dBar;
+        const dSect = wantSect ? dChord + LANE_STEP * k : dChord;
+        const laneBar = staffTop - dBar;
+        const laneChord = staffTop - dChord;
+        const laneSect = staffTop - dSect;
 
         // Two labels can also collide inside one lane — a chord every eighth
         // note, say. First one wins the spot; the loser is dropped rather than
@@ -1849,20 +1988,40 @@ import * as c from './src/kit/controls.js';
                  * quando era sottile.
                  */
                 /*
-                 * Lo spessore dell'anello a riposo — non quello della nota
-                 * "adesso", che qui non e' noto e non serve: la coda non deve
-                 * ingrossare perche' il cursore le passa sopra.
+                 * LO SPESSORE VIENE DAL RAGGIO DELLA TESTA, non dall'anello.
+                 *
+                 * Prima era 3,2k contro un anello da 1,4k e la testa spariva
+                 * dentro la coda; poi l'ho legata all'anello a due terzi e la
+                 * coda e' diventata quasi invisibile. Sbagliavano entrambe la
+                 * domanda: il problema non era mai stato "quanto spessa", era
+                 * che la coda ATTRAVERSAVA la testa perche' partiva dal
+                 * centro.
+                 *
+                 * Risolto quello — parte dal bordo del cerchio e sfuma — una
+                 * coda spessa non copre piu' niente, e spessa deve essere: e'
+                 * la sola cosa che dice quanto dura una nota, e su una tenuta
+                 * lunga e' anche la piu' grande cosa che la nota ha.
+                 *
+                 * Dal raggio, perche' la coda appartiene alla nota: su una
+                 * testa grande deve essere grande. Un terzo del raggio, con un
+                 * minimo per le teste minuscole.
                  */
-                const ringW = Math.max(1.1, 1.4 * k);
-                const tailW = Math.max(1.6, ringW * 0.66);
+                const tailW = Math.max(2.5, headR * 0.34);
                 const from = x0 + headR * 0.92;
                 if (x1 > from + 1) {
-                    const fade = ctx.createLinearGradient(from, y, x1, y);
-                    fade.addColorStop(0, col);
-                    fade.addColorStop(0.72, col);
-                    fade.addColorStop(1, kitInk('dim', 0));
-                    ctx.strokeStyle = fade;
-                    ctx.globalAlpha = 0.8;
+                    /*
+                     * PIENA FINO ALLA FINE, con un taglio che dice dove finisce.
+                     *
+                     * Sfumava verso il nulla nell'ultimo quarto, e una
+                     * sfumatura dice "piu' o meno qui": la fine VISIBILE
+                     * cadeva prima della fine vera, cioe' esattamente il modo
+                     * in cui si sbaglia una durata. `x1` e' `xAt(t + sus)` —
+                     * la durata che il feedback giudichera' — quindi la coda
+                     * deve arrivarci intera e chiudersi con un segno, non
+                     * svanire.
+                     */
+                    ctx.strokeStyle = col;
+                    ctx.globalAlpha = 0.85;
                     ctx.lineWidth = tailW;
                     ctx.lineCap = 'round';
                     ctx.beginPath();
@@ -1880,8 +2039,21 @@ import * as c from './src/kit/controls.js';
                         ctx.lineTo(x1, y);
                     }
                     ctx.stroke();
-                    ctx.globalAlpha = 1;
+
+                    /*
+                     * Il taglio finale: una barretta verticale sulla durata
+                     * esatta. E' il solo posto della coda che si legge come un
+                     * confine, e senza di esso l'occhio prende la fine della
+                     * linea come approssimativa.
+                     */
                     ctx.lineCap = 'butt';
+                    ctx.lineWidth = Math.max(1.6, tailW * 0.5);
+                    ctx.beginPath();
+                    ctx.moveTo(x1, y - tailW * 0.95);
+                    ctx.lineTo(x1, y + tailW * 0.95);
+                    ctx.stroke();
+
+                    ctx.globalAlpha = 1;
                 }
             }
 
@@ -1921,7 +2093,23 @@ import * as c from './src/kit/controls.js';
                 ctx.strokeStyle = col;
                 ctx.lineWidth = Math.max(1.5, 2 * k);
                 ctx.beginPath();
-                ctx.moveTo(bx, y - r * 0.4);
+                /*
+                 * `headR` anche QUI, una riga sotto il commento che lo dice.
+                 *
+                 * La correzione precedente ha cambiato `bx` e ha lasciato
+                 * questa riga: il commento sopra spiegava un difetto ancora
+                 * presente due righe piu' giu'. Il risultato e' che la sezione
+                 * dei bend non ha MAI disegnato le sue teste — la coda si
+                 * vedeva, il cerchio no, perche' il ReferenceError abbandonava
+                 * la staffa fra i due cicli.
+                 *
+                 * Trovato dal guard per staffa e dallo showcase pack insieme:
+                 * il guard ha scritto il nome dell'identificatore in console,
+                 * il pack ha fatto in modo che ci fosse un bend da disegnare.
+                 * Correggere un'occorrenza di un identificatore sbagliato non
+                 * e' correggere il difetto: vanno cercate tutte.
+                 */
+                ctx.moveTo(bx, y - headR * 0.4);
                 ctx.quadraticCurveTo(bx + 5 * k, topY, bx + 11 * k, topY);
                 ctx.stroke();
 
@@ -2156,59 +2344,56 @@ import * as c from './src/kit/controls.js';
                  */
                 if (span > 3 && span < 90 * k) {
                     /*
-                     * UN PONTE, non un arco con una lettera che gli galleggia
-                     * sopra.
+                     * UN ARCO CIRCOLARE E IL NOSTRO BADGE SOPRA.
                      *
-                     * L'arco sottile piu' la `H` staccata piu' — quando la
-                     * nota era anche legata — le parentesi facevano quattro
-                     * segni per un'idea, e si leggevano come parentesi
-                     * annidate. Segnalato come scomodo, e lo era.
+                     * Prima era una pillola con due gambe e la lettera dentro.
+                     * Diceva la cosa giusta — un legame fra due teste — ma con
+                     * lo span corto la pillola collassava in un cerchietto su
+                     * un moncone, e leggerlo come un legame richiedeva fiducia.
+                     * Detto chiaro: l'arco perfettamente circolare, il simbolo
+                     * leggibile nel nostro cerchio, il cerchio leggermente
+                     * sopra l'arco.
                      *
-                     * Cosa dice la tecnica: una sola pennata, due altezze. Il
-                     * ponte lo dice occupando lo spazio FRA le due teste, che
-                     * e' vuoto per definizione e che appartiene esattamente a
-                     * quel legame; la lettera sta DENTRO il ponte, non sopra,
-                     * perche' e' il nome di quel legame e non un commento su
-                     * di esso.
-                     *
-                     * La x resta la x: le due teste stanno dove stanno i loro
-                     * tempi. Un ponte non puo' mentire sul tempo come farebbe
-                     * una testa unica.
+                     * Circolare vuol dire circolare: il raggio si ricava dalla
+                     * saetta e dalla mezza corda — R = (a² + f²) / 2f — e il
+                     * centro sta SOTTO le teste, cosi' l'arco gonfia verso
+                     * l'alto. Una `quadraticCurveTo` avrebbe dato una parabola:
+                     * simile all'occhio distratto, e diversa da quello che e'
+                     * stato chiesto.
                      */
                     ctx.save();
-                    const bh = Math.max(9, r * 0.62);
-                    const bx0 = prev + r * 0.86;
-                    const bx1 = x - r * 0.86;
-                    if (bx1 > bx0 + 2) {
-                        const by = y - r - bh * 0.62;
-                        ctx.fillStyle = kitInk('dim', 0.24);
+                    const ax0 = prev + r * 0.55;
+                    const ax1 = x - r * 0.55;
+                    if (ax1 > ax0 + 2) {
+                        const chordY = y - r * 0.9;
+                        const half = (ax1 - ax0) / 2;
+                        const sag = Math.max(5, r * 0.45);
+                        const arcR = (half * half + sag * sag) / (2 * sag);
+                        const arcCx = (ax0 + ax1) / 2;
+                        const arcCy = chordY + (arcR - sag);
                         ctx.strokeStyle = kitInk('dim', 0.85);
-                        ctx.lineWidth = Math.max(1, 1.1 * k);
-                        const rr = bh / 2;
+                        ctx.lineWidth = Math.max(1.2, 1.5 * k);
+                        ctx.lineCap = 'round';
                         ctx.beginPath();
-                        ctx.moveTo(bx0 + rr, by - rr);
-                        ctx.arcTo(bx1, by - rr, bx1, by + rr, rr);
-                        ctx.arcTo(bx1, by + rr, bx0, by + rr, rr);
-                        ctx.arcTo(bx0, by + rr, bx0, by - rr, rr);
-                        ctx.arcTo(bx0, by - rr, bx1, by - rr, rr);
-                        ctx.closePath();
-                        ctx.fill();
+                        ctx.arc(
+                            arcCx, arcCy, arcR,
+                            Math.atan2(chordY - arcCy, ax0 - arcCx),
+                            Math.atan2(chordY - arcCy, ax1 - arcCx)
+                        );
                         ctx.stroke();
 
-                        /* Le due gambe che lo attaccano alle teste: cosi' il
-                           ponte appartiene a QUESTA coppia e non galleggia. */
-                        ctx.beginPath();
-                        ctx.moveTo(bx0 + rr * 0.6, by + rr);
-                        ctx.lineTo(prev + r * 0.5, y - r * 0.55);
-                        ctx.moveTo(bx1 - rr * 0.6, by + rr);
-                        ctx.lineTo(x - r * 0.5, y - r * 0.55);
-                        ctx.stroke();
-
-                        if (bx1 - bx0 > bh * 1.1) {
-                            ctx.fillStyle = kitInk('text');
-                            ctx.font = '800 ' + Math.round(bh * 0.72) + 'px ' + kitFont('num');
-                            fillInkCentred(ctx, it.n.ho ? 'H' : 'P', (bx0 + bx1) / 2, by);
-                        }
+                        /*
+                         * Il badge non entra mai nella corsia dei numeri di
+                         * battuta: sul mi cantino la pila arco + cerchio ci
+                         * arriva, e lo spazio riservato e' calcolato sul caso
+                         * tipico. Il morsetto e' la garanzia, non la stima.
+                         */
+                        const br = techBadgeR(r);
+                        const by = Math.max(
+                            chordY - sag - br - 1.5 * k,
+                            laneBar + 6 * k + br
+                        );
+                        techBadge(ctx, arcCx, by, br, it.n.ho ? 'H' : 'P');
                     }
                     ctx.restore();
                 }
@@ -2235,56 +2420,31 @@ import * as c from './src/kit/controls.js';
             }
 
             /*
-             * ── WHAT YOU DO WITH YOUR HANDS, over the head ──────────────
+             * ── COSA FAI CON LE MANI, sopra la testa ────────────────────
              *
-             * `T` for a tap and a drawn accent wedge, in standard tablature
-             * positions: both sit above the note they belong to, and both are
-             * CONTENT rather than a hint — they change how you strike that
-             * note, so they get the reading ink and a size taken off the fret
-             * digit instead of a fixed nine pixels in the quietest grey on the
-             * staff. Reported as not visible enough, and it was: 9px of `dim`
-             * against a coloured string is the least legible thing here.
+             * `T` per il tapping e l'accento, nelle posizioni della notazione
+             * standard: sopra la nota a cui appartengono. Erano glifi nudi da
+             * nove pixel in `dim`, cioe' la cosa meno leggibile della staffa
+             * sopra una corda colorata — segnalato come poco visibile, e lo
+             * era. Adesso portano lo STESSO badge di `H` e `P`: e' la stessa
+             * categoria di informazione, quindi ha lo stesso disegno.
              *
-             * The accent is DRAWN, not the character `>`. In a mono face that
-             * glyph is punctuation on the text baseline — it reads as a stray
-             * bracket, where an accent is a wedge with weight. Same argument
-             * as the bend's arrowhead.
-             *
-             * Marks share one row, so a tapped accented note does not print
-             * two things in the same spot.
+             * Condividono una riga, percio' una nota tappata e accentata non
+             * stampa due segni nello stesso punto.
              */
             if (S.showTech && fit > 0.72) {
-                const markY = y - r - 7 * k;
-                const glyphs = [];
-                if (it.n.tp) glyphs.push('T');
-                const wedge = !!it.n.ac;
-                if (glyphs.length || wedge) {
-                    ctx.save();
-                    ctx.fillStyle = kitInk('text');
-                    ctx.strokeStyle = kitInk('text');
-                    /* Off the fret digit, so it scales with the note size the
-                       reader chose rather than staying 9px for ever. */
-                    const ms = Math.max(9, fs * 0.62);
-                    let cx = x;
-                    if (glyphs.length && wedge) cx = x - ms * 0.55;
-                    if (glyphs.length) {
-                        ctx.font = '800 ' + Math.round(ms) + 'px ' + kitFont('num');
-                        fillInkCentred(ctx, glyphs.join(''), cx, markY);
+                const marks = [];
+                if (it.n.tp) marks.push('T');
+                if (it.n.ac) marks.push('>');
+                if (marks.length) {
+                    const br = techBadgeR(r);
+                    const my = Math.max(y - r - 3 * k - br, laneBar + 6 * k + br);
+                    const step = br * 2.2;
+                    let mx = x - step * (marks.length - 1) / 2;
+                    for (const g of marks) {
+                        techBadge(ctx, mx, my, br, g);
+                        mx += step;
                     }
-                    if (wedge) {
-                        const wx = (glyphs.length ? x + ms * 0.55 : x);
-                        const w = ms * 0.5;
-                        const h = ms * 0.34;
-                        ctx.lineWidth = Math.max(1.6, ms * 0.16);
-                        ctx.lineCap = 'round';
-                        ctx.lineJoin = 'round';
-                        ctx.beginPath();
-                        ctx.moveTo(wx - w, markY - h);
-                        ctx.lineTo(wx + w, markY);
-                        ctx.lineTo(wx - w, markY + h);
-                        ctx.stroke();
-                    }
-                    ctx.restore();
                 }
             }
         }

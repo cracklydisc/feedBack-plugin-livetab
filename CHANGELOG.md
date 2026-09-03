@@ -8,6 +8,51 @@ and it follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 Versions before 0.26.1 were never published; the history starts at the first
 public alpha.
 
+## [0.38.0] — 2026-09-03
+
+### Changed
+
+- **The bar numbers are out from under the notes.** The lanes above the strings
+  — bar number, chord name, section — were pinned at fixed distances from the
+  top string while a note head sticks up by its own radius and a technique
+  badge by more than twice that, so at any note size above the smallest the
+  header sat inside the notes. They are now built upward from the head: the
+  clearance is measured, not guessed, and the bar line lengthens with the
+  stack. The room reserved above the strings is the minimum, and the lanes
+  spend the air that the centred staff leaves over — so on a single staff they
+  rise well clear at no cost to note size, which is where they were reported.
+- **A sustain tail says how long the note is.** It used to fade out over its
+  last quarter, and a fade says "somewhere around here": the visible end fell
+  short of the real one, which is exactly how a duration gets misread. The
+  tail is now solid to the sustain's true end and closes with a tick, so there
+  is one place to look and it is the right one. It is also thicker, taken off
+  the head radius rather than a fixed pixel count.
+- **One badge for every technique symbol.** `H` and `P` wore a pill with legs,
+  `T` and the accent were bare 9px glyphs in the faintest ink on the staff —
+  three drawings for one kind of information. All four now share a dark disc
+  with a ring and the symbol inside, the same dark plate the bar and section
+  labels use, so they read as a family and stay legible over a coloured
+  string. The accent is drawn as a wedge rather than typed as `>`, which in a
+  mono face is punctuation on the text baseline.
+- **Hammer-on and pull-off are a circular arc with the badge above it.** The
+  arc's radius is derived from its sagitta and half-chord, so it is a true
+  circle rather than a parabola that resembles one, and the badge is clamped
+  so it can never climb into the bar-number lane.
+
+### Fixed
+
+- **The bend section drew tails with no note heads.** A second `r` in the
+  tails pass — where the head radius does not exist — threw a ReferenceError
+  every frame a bend was in view, and the per-staff guard abandoned the staff
+  between the two passes. The earlier fix had corrected the line above it and
+  left this one sitting under a comment explaining the very defect. There is
+  now a test that walks brace depth over that pass; the first version of it
+  counted occurrences and passed with the bug put back, which is worse than no
+  test at all.
+
+Versions 0.29.0 through 0.37.0 shipped without changelog entries; their detail
+is in the git history.
+
 ## [0.28.0] — 2026-09-01
 
 ### Added

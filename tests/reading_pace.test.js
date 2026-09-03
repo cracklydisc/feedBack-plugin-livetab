@@ -323,3 +323,58 @@ test('the sync paths do not call a helper that was deleted', () => {
         && !SRC.includes('const ' + name + ' ='));
     assert.deepEqual(missing, [], 'called by a sync path but not defined: ' + missing.join(', '));
 });
+
+// ─────────────────────────────────────────────────────────────────────────
+// The head radius is called `r` INSIDE the heads pass and nowhere else.
+//
+// `drawStaff` draws in two passes over the same notes: first the tails, then
+// the heads. `r` — the head radius — is declared in the heads pass, so an `r`
+// written in the tails pass is a ReferenceError, and one is enough to abandon
+// the staff halfway: the tails are already painted, the heads never arrive.
+//
+// That has now happened twice in the same block. The first fix changed the
+// `bx` line and left the `moveTo` two lines below it, under a comment that
+// explained the very defect still sitting there — so the bend section drew
+// tails with no circles for a whole release, and the only evidence was one
+// console line from the per-staff guard.
+//
+// The first version of this guard COUNTED bare `r`s and allowed a few, because
+// the tails pass does declare one of its own — the slide's landing dot. It
+// passed with the bug put back, which makes it worse than no guard: it reports
+// "checked" about something it cannot see. So it walks brace depth instead and
+// asks the only question that matters: is this `r` inside a block that
+// declares one?
+test('the tails pass never reads the head radius by its short name', () => {
+    const from = SRC.indexOf('// ── Sustains, slides and bends ');
+    const to = SRC.indexOf('// ── Note heads ');
+    assert.ok(from > 0 && to > from, 'both passes must still be marked');
+
+    /* Comments talk ABOUT `r` — that is what they are for here — and a string
+       can hold any letter, so neither is a read and neither holds a brace.
+       Stripped before the walk rather than during it. */
+    const code = SRC.slice(from, to)
+        .replace(/\/\*[\s\S]*?\*\//g, ' ')
+        .split('\n')
+        .map((line) => line.replace(/\/\/.*$/, ''))
+        .map((line) => line.replace(/'[^'\n]*'|"[^"\n]*"|`[^`]*`/g, ' '))
+        .join('\n');
+
+    const BARE_R = /(?<![A-Za-z0-9_$.])r(?![A-Za-z0-9_$])/;
+    const stray = [];
+    let depth = 0;
+    let declaredAt = null;
+
+    for (const line of code.split('\n')) {
+        // Left the block that declared one: back to `r` meaning nothing here.
+        if (declaredAt !== null && depth < declaredAt) declaredAt = null;
+        if (/\b(?:const|let|var)\s+r\b/.test(line)) declaredAt = depth;
+        else if (declaredAt === null && BARE_R.test(line)) stray.push(line.trim());
+        for (const ch of line) {
+            if (ch === '{') depth += 1;
+            else if (ch === '}') depth -= 1;
+        }
+    }
+
+    assert.deepEqual(stray, [],
+        'the tails pass reads `r`, which only exists in the heads pass');
+});
