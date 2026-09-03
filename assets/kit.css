@@ -693,7 +693,21 @@
     box-sizing: border-box;
     height: var(--fbk-h-md, 40px);
     border-radius: var(--fbk-radius-sm, 8px);
-    background: rgb(var(--fbk-surface-2, 30 34 44));
+    /*
+     * IL FONDO DI UN CONTROLLO E' SCURO, e prima era la faccia chiara.
+     *
+     * Il binario stava su `surface-2` (#1E222C) mentre la select accanto sta
+     * su `bg` (#05070C): due controlli affiancati nello stesso pannello su due
+     * fondi diversi, e il disegno di riferimento li vuole entrambi scuri con
+     * il filo di bordo. Segnalato guardando i settings di Live Tab accanto al
+     * disegno e accanto a Riff Repeater.
+     *
+     * La regola che ne esce e' piu' semplice di quella che sostituisce: un
+     * controllo POGGIA nel fondo, il filo da 1px dice che e' un controllo, e
+     * l'accento dice quale hai scelto. Non serve una terza tonalita' per
+     * dire "premibile" quando il bordo e il riempimento lo dicono già.
+     */
+    background: rgb(var(--fbk-bg, 5 7 12));
     border: var(--fbk-hairline, 1px) solid rgb(var(--fbk-border, 42 46 58));
     box-shadow: var(--fbk-panel-inner, none);
 }
@@ -749,7 +763,9 @@
     padding: 0 var(--fbk-s-6, 14px);
     border-radius: var(--fbk-radius-sm, 8px);
     border: var(--fbk-hairline, 1px) solid rgb(var(--fbk-border, 42 46 58));
-    background: rgb(var(--fbk-surface-2, 30 34 44));
+    /* Lo stesso fondo del binario: un chip e' un controllo che sta da solo,
+       non un pezzo di binario, ma la tonalita' su cui poggia e' la stessa. */
+    background: rgb(var(--fbk-bg, 5 7 12));
     box-shadow: var(--fbk-control-lift, none);
 }
 
@@ -1094,17 +1110,22 @@
     border-radius: var(--fbk-radius-sm, 8px);
     border: 0;
     /*
-     * A RAISED FACE, not another hole.
+     * NESSUNA FACCIA: il pozzo dello stepper e' il fondo, e il `−` sta su
+     * quello.
      *
-     * They carried a border stroke, and inside a well that is already darker a
-     * stroked box reads as one more recess — so a stepper looked like three
-     * dents in a row instead of a value between two buttons. The design draws
-     * them as the control tone with a top light line and no stroke: light
-     * comes from above and a thing you press catches it, which is the whole
-     * difference between "pressable" and "printed".
+     * Hanno avuto un bordo (e sembravano tre buchi in fila), poi la tonalita'
+     * chiara con la luce dall'alto — e quella tonalita' e' proprio cio' che il
+     * disegno non vuole: lo stepper risultava il pezzo piu' chiaro di tutto il
+     * pannello. Entrambi i tentativi rispondevano alla domanda sbagliata.
+     *
+     * Un pulsante DENTRO un pozzo non ha bisogno di un fondo suo: e' cosi' che
+     * `.fbk-seg-btn` funziona da sempre nel suo binario. Il pozzo porta la
+     * tonalita', il bordo del pozzo dice dove finisce il controllo, e la
+     * pressione si vede quando la si fa — accento al passaggio e alla
+     * pressione. Niente ombra di rilievo, perche' non c'e' piu' niente da
+     * rilevare.
      */
-    background: rgb(var(--fbk-surface-2, 30 34 44));
-    box-shadow: var(--fbk-control-lift, none);
+    background: transparent;
     color: rgb(var(--fbk-text, 232 238 252));
     font: var(--fbk-t-label, 700 13px/1.25 sans-serif);
     /*

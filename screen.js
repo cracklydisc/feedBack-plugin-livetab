@@ -853,7 +853,10 @@ import * as c from './src/kit/controls.js';
         ctx.save();
         ctx.beginPath();
         ctx.arc(cx, cy, br, 0, Math.PI * 2);
-        ctx.fillStyle = 'rgba(9,13,22,0.92)';
+        /* Opaco: l'arco del legame arriva tangente al bordo inferiore, e al
+           92% si intravedeva dentro il disco — abbastanza per riempire la
+           parte bassa del cerchio e far sembrare la lettera spostata in su. */
+        ctx.fillStyle = 'rgb(9 13 22)';
         ctx.fill();
         ctx.strokeStyle = kitInk('dim', 0.9);
         ctx.lineWidth = Math.max(1, br * 0.14);
@@ -872,8 +875,28 @@ import * as c from './src/kit/controls.js';
             ctx.lineTo(cx - w * 0.8, cy + h);
             ctx.stroke();
         } else {
+            /*
+             * LA LETTERA RIEMPIE IL DISCO, e prima galleggiava dentro.
+             *
+             * Segnalato come "H e P non sono centrate nel cerchio". Misurato in
+             * tre modi — le metriche del font, i pixel del canvas vero, e il
+             * badge ridisegnato a 8x — la lettera e' centrata entro 0,13px su
+             * entrambi gli assi: non c'era un errore di centramento da
+             * correggere. C'era una lettera alta il 39% del diametro dentro un
+             * disco con un anello sfumato, e una lettera piccola in un disco
+             * grande si legge come una lettera messa male.
+             *
+             * A 1,6 l'altezza maiuscola arriva al 52% del diametro, che e' la
+             * proporzione di un badge: la lettera diventa il contenuto del
+             * cerchio invece di un segno appoggiato al centro. La sensazione di
+             * scentratura se ne va perche' se ne va lo spazio che la produceva.
+             *
+             * `fillInkCentred` continua a fare il lavoro: centra la MACCHIA
+             * D'INCHIOSTRO, non la scatola del font, e su H, P e T — tutte
+             * senza discendenti — sono due cose diverse di quattro pixel.
+             */
             ctx.fillStyle = kitInk('text');
-            ctx.font = '800 ' + Math.round(br * 1.16) + 'px ' + kitFont('num');
+            ctx.font = '800 ' + Math.round(br * 1.6) + 'px ' + kitFont('num');
             fillInkCentred(ctx, glyph, cx, cy);
         }
         ctx.restore();
@@ -2146,26 +2169,57 @@ import * as c from './src/kit/controls.js';
                 ctx.stroke();
                 ctx.restore();
 
-                // Hollow head at the arrival fret: it is reached, not picked.
+                /*
+                 * L'ARRIVO E' UNA TESTA A TUTTI GLI EFFETTI, e prima era una
+                 * testa in miniatura.
+                 *
+                 * Era un cerchio all'83% con il numero all'85%: un `12` in un
+                 * cerchio piu' piccolo del suo contenuto, senza la capsula che
+                 * ogni altra testa a due cifre riceve. Segnalato che i numeri
+                 * di destinazione a due cifre si leggono poco, ed era la somma
+                 * di tre riduzioni sulla stessa cifra.
+                 *
+                 * La differenza fra una nota pizzicata e una raggiunta non e'
+                 * una questione di misura — un tasto e' un tasto, e si legge o
+                 * non si legge — e' una questione di PESO: stesso raggio,
+                 * stesso font, stessa capsula, ma vuota e con l'anello piu'
+                 * sottile. Cosi' dice "ci arrivi" senza dire "conta meno".
+                 *
+                 * Il font e la capsula vengono dagli stessi valori della testa
+                 * suonata (`fs`, `headR`, `4.6k * fit`) invece di essere
+                 * riscritti qui: erano riscritti, e la famiglia mono era pure
+                 * cablata a mano invece di venire dal kit.
+                 */
                 if (!noteAt(s, it.t + sus)) {
-                    const r = headR * 0.83;
-                    ctx.beginPath();
-                    ctx.arc(x1, y + (up ? -rise : rise), r, 0, Math.PI * 2);
-                    ctx.fillStyle = 'rgba(6,9,15,0.9)';
-                    ctx.fill();
-                    ctx.strokeStyle = col;
-                    ctx.lineWidth = Math.max(1, 1.2 * k);
-                    ctx.globalAlpha = 0.8;
-                    ctx.stroke();
-                    ctx.globalAlpha = 1;
-                    ctx.font = '600 ' + Math.round(fs * 0.85)
-                        + 'px "JetBrains Mono", ui-monospace, monospace';
-                    ctx.fillStyle = col;
-                    ctx.textAlign = 'center';
-                    ctx.textBaseline = 'middle';
+                    const gy = y + (up ? -rise : rise);
+                    const gr = headR;
                     const arrival = (S.noteLabel === 'name')
                         ? nameOf(s, target) : String(target);
-                    ctx.fillText(arrival, x1, y + (up ? -rise : rise) + 0.5);
+                    ctx.save();
+                    ctx.font = '700 ' + Math.round(fs) + 'px ' + kitFont('num');
+                    const gw = ctx.measureText(arrival).width;
+                    const grx = Math.max(gr, gw / 2 + 4.6 * k * fit);
+                    ctx.beginPath();
+                    if (grx <= gr + 0.5) {
+                        ctx.arc(x1, gy, gr, 0, Math.PI * 2);
+                    } else {
+                        ctx.moveTo(x1 - grx + gr, gy - gr);
+                        ctx.arcTo(x1 + grx, gy - gr, x1 + grx, gy + gr, gr);
+                        ctx.arcTo(x1 + grx, gy + gr, x1 - grx, gy + gr, gr);
+                        ctx.arcTo(x1 - grx, gy + gr, x1 - grx, gy - gr, gr);
+                        ctx.arcTo(x1 - grx, gy - gr, x1 + grx, gy - gr, gr);
+                        ctx.closePath();
+                    }
+                    ctx.fillStyle = 'rgb(6 9 15)';
+                    ctx.fill();
+                    ctx.strokeStyle = col;
+                    ctx.lineWidth = Math.max(1, 1.1 * k);
+                    ctx.globalAlpha = 0.75;
+                    ctx.stroke();
+                    ctx.globalAlpha = 1;
+                    ctx.fillStyle = col;
+                    fillInkCentred(ctx, arrival, x1, gy);
+                    ctx.restore();
                 }
             } else {
                 /*
@@ -2273,7 +2327,21 @@ import * as c from './src/kit/controls.js';
                  * takes that colour.
                  */
                 const semis = it.n.bn;
-                const txt = (semis >= 2) ? 'full' : (semis >= 1 ? '½' : '¼');
+                /*
+                 * `1/2`, NON `½`.
+                 *
+                 * Le frazioni tipografiche sono un glifo solo, disegnato dentro
+                 * l'em a poco piu' di meta' altezza: accanto a `full`, che sono
+                 * quattro lettere a grandezza piena, il mezzo tono si leggeva
+                 * la meta' — cioe' proprio i bend parziali erano gli
+                 * illeggibili. Segnalato esattamente cosi'.
+                 *
+                 * Tre cifre a grandezza piena stanno alla stessa scala di
+                 * `full`, e la tablatura scrive `1/2` tanto quanto `½`. Non e'
+                 * una rinuncia alla notazione standard: e' l'altra sua forma,
+                 * quella che regge a questa dimensione.
+                 */
+                const txt = (semis >= 2) ? 'full' : (semis >= 1 ? '1/2' : '1/4');
                 const rise = Math.min(gap * 0.8, (10 + 4 * Math.min(2, semis)) * k);
                 /*
                  * `headR`, non `r`.
@@ -2325,9 +2393,35 @@ import * as c from './src/kit/controls.js';
                 ctx.closePath();
                 ctx.fill();
 
-                ctx.font = '700 ' + Math.round(fs * 0.74) + 'px ' + kitFont('num');
+                /*
+                 * E sul piatto scuro, come ogni altra etichetta della staffa.
+                 *
+                 * Era testo nudo nel colore della corda, appoggiato sopra la
+                 * linea della corda stessa e sopra la griglia del ritmo: il
+                 * colore che la lega alla nota e' anche il colore su cui
+                 * finisce. Le targhette di battuta, di sezione, i badge e la
+                 * carta dell'accordo hanno tutte lo stesso piatto per la stessa
+                 * ragione; questa era l'unica scritta rimasta senza.
+                 */
+                const bendPx = Math.round(fs * 0.86);
+                ctx.font = '800 ' + bendPx + 'px ' + kitFont('num');
+                const bw = ctx.measureText(txt).width;
+                const bpx = 3 * k;
+                const bh = bendPx * 0.78 + bpx;
+                const blx = ax + ah + 3 * k;
+                const brad = Math.min(3.5 * k, bh);
+                ctx.beginPath();
+                ctx.moveTo(blx - bpx + brad, topY - bh);
+                ctx.arcTo(blx + bw + bpx, topY - bh, blx + bw + bpx, topY + bh, brad);
+                ctx.arcTo(blx + bw + bpx, topY + bh, blx - bpx, topY + bh, brad);
+                ctx.arcTo(blx - bpx, topY + bh, blx - bpx, topY - bh, brad);
+                ctx.arcTo(blx - bpx, topY - bh, blx + bw + bpx, topY - bh, brad);
+                ctx.closePath();
+                ctx.fillStyle = 'rgb(9 13 22)';
+                ctx.fill();
+
                 ctx.fillStyle = col;
-                fillInkCentred(ctx, txt, ax + ah + 3 * k, topY, 'left');
+                fillInkCentred(ctx, txt, blx, topY, 'left');
                 ctx.restore();
             }
         }
@@ -2758,8 +2852,18 @@ import * as c from './src/kit/controls.js';
              */
             const aheadX = playX + (S.aheadBeats || 0) * paceFactor(map) * pxPerBeat;
             if (aheadX > playX + 2) {
+                /*
+                 * PIU' LEGGERA: prima la leggibilita', poi l'effetto.
+                 *
+                 * Era accento a 0,12 e sopra ci si legge — un numero di tasto,
+                 * un nome di accordo, una targhetta di battuta. Un velo che
+                 * colora quello che devi leggere lavora contro la sola cosa
+                 * per cui esiste questa pagina, e la regione si capisce
+                 * benissimo anche a 0,07: basta che si veda il confine, non
+                 * che si veda il velo. Chiesto esplicitamente.
+                 */
                 const wash = ctx.createLinearGradient(playX, 0, aheadX, 0);
-                wash.addColorStop(0, kitInk('accent', 0.12));
+                wash.addColorStop(0, kitInk('accent', 0.07));
                 wash.addColorStop(1, kitInk('accent', 0));
                 ctx.fillStyle = wash;
                 ctx.fillRect(playX, band.top + 2 * k, aheadX - playX, band.height - 4 * k);

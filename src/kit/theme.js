@@ -39,7 +39,7 @@ const ROLES = {
      *     well    #05070C   a slot cut INTO the chassis
      *     chassis #0C0F16   the unit's own body
      *     plate   #12141C   the footer plate
-     *     control #1E222C   the face of a thing you press
+     *     shade   #1E222C   grooves, hovers, the second surface
      *     stroke  #2A2E3A   the 1px division between racks
      *
      * Two things changed from the palette this replaced, and both matter.
@@ -59,7 +59,17 @@ const ROLES = {
     bg: '5 7 12',                 // well
     surface: '12 15 22',          // chassis — host `card`
     plate: '18 20 28',            // footer plate
-    surface2: '30 34 44',         // control — host `cardMuted`
+    /*
+     * `surface2` NON e' piu' la faccia di un controllo.
+     *
+     * Lo era, e i controlli dei settings poggiavano su di essa mentre la
+     * select accanto poggiava sul pozzo: due fondi diversi per due controlli
+     * affiancati. Il disegno li vuole tutti sul pozzo, con il filo da 1px a
+     * dire che sono controlli — quindi un controllo non ha una sua tonalita'
+     * e questa resta per cio' che davvero e' una seconda superficie: le
+     * scanalature dello slider, gli hover di riga, la barra di scorrimento.
+     */
+    surface2: '30 34 44',         // shade — host `cardMuted`
     border: '42 46 58',           // stroke
     sidebar: '12 15 22',
 

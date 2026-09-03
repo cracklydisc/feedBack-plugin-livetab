@@ -24,7 +24,7 @@
 
 import { follow, unfollow } from './theme.js';
 
-export const VERSION = '0.28.1';
+export const VERSION = '0.29.0';
 
 const LINK_ATTR = 'data-fbk-kit';
 

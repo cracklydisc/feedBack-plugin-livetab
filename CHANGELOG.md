@@ -66,6 +66,17 @@ nine versions nobody could install. The release after 0.28.0 is this one.
   single `OPEN` affordance, and A/B markers with brackets on a padded timeline
   instead of full-height rules.
 
+- **The tab's own controls are on the kit's dark ground.** The settings sheet's
+  chips and the stepper's `−`/`+` sat on a lighter tone than the select beside
+  them — two controls in one panel on two different grounds. Fixed in the kit
+  (0.29.0) and re-vendored, so Riff Repeater moves with it: a control rests in
+  the ground, the hairline says it is a control, the accent says which one you
+  picked.
+- **The look-ahead wash is lighter** — accent at 0.07 rather than 0.12. A veil
+  that tints what you are reading works against the only thing this page is
+  for, and the region still reads: what has to be visible is its edge, not the
+  veil.
+
 ### Fixed
 
 - **Chord names never drew, on any song with phrase data.** The plugin asked
@@ -82,6 +93,24 @@ nine versions nobody could install. The release after 0.28.0 is this one.
   being set after the measurement — so a 38px digit was corrected by 2.8px
   instead of 12. Every isolated test passed, because a scratch canvas starts
   clean.
+- **A partial bend was the illegible one.** `½` and `¼` are single
+  typographic glyphs drawn a little over half height inside the em, so beside
+  `full` — four letters at full size — a semitone read at half the scale.
+  Written `1/2` and `1/4` now: three full-size figures at `full`'s scale, and
+  tablature writes both forms. The amount also sits on the same dark plate as
+  every other label on the staff, which it was the last one without.
+- **A slide's arrival is a head at full weight.** It was a circle at 83% with
+  its number at 85% and no capsule, so a two-digit destination was three
+  reductions stacked on the same figure. Same radius, same font, same capsule
+  as a played note now — hollow, with a thinner ring, because the difference
+  between picked and reached is weight, not size.
+- **`H` and `P` fill their badge.** Reported as not centred; measured three ways
+  — font metrics, the live canvas pixels, the badge redrawn at 8× — the letter
+  is centred to within 0.13px on both axes, so there was no centring error to
+  correct. There was a letter 39% of the disc's height inside a ring that
+  fades, and a small letter in a large disc reads as a letter set wrong. At 52%
+  it becomes the disc's content. The plate is opaque too: the slur's arc
+  arrives tangent to the bottom edge and at 92% showed through.
 - Page view no longer loses the staves below the first when one of them throws,
   and a fault is reported once rather than sixty times a second.
 
