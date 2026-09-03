@@ -784,7 +784,23 @@ import * as c from './src/kit/controls.js';
      */
     function fillInkCentred(ctx, text, cx, cy, align) {
         ctx.textAlign = align || 'center';
-        const m = ctx.measureText(text);
+        /*
+         * CENTRE WHAT YOU READ, not the decorations around it.
+         *
+         * A held note is written `(7)`, and centring the whole ink box centres
+         * the BRACKETS — which hang lower than the digit does, so the digit
+         * itself ends up high. Measured at 40px: the group lands on centre and
+         * the digit sits 2.5px above it, which is exactly the offset that kept
+         * being reported after the first fix "worked". A plain `7` was already
+         * within half a pixel, which is why the fault only showed on the tied
+         * notes and read as the fix not having taken.
+         *
+         * So the correction is measured from the label with its brackets
+         * stripped. The brackets then sit slightly low, which is right: they
+         * are around the number, and the number is the thing being read.
+         */
+        const core = String(text).replace(/[()\[\]]/g, '') || String(text);
+        const m = ctx.measureText(core);
         const up = m.actualBoundingBoxAscent;
         const down = m.actualBoundingBoxDescent;
         if (typeof up === 'number' && typeof down === 'number') {
