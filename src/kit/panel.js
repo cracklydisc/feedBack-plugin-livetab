@@ -97,11 +97,27 @@ export function createPanel(o) {
      * survive it, which is not a thing to depend on; the two tests that came
      * with the fix moved here with the code.
      */
-    const KEEPS_MOUSEDOWN = ['INPUT', 'SELECT', 'TEXTAREA', 'OPTION'];
+    /*
+     * A LABEL IS PART OF ITS CONTROL, and that is the correction this guard
+     * needed a version later.
+     *
+     * The first version tested `target.tagName` against a list of form tags. A
+     * `.fbk-toggle` is a `<label>` wrapping a checkbox, so a press lands on the
+     * LABEL or on the track span inside it — neither of which is in the list —
+     * and cancelling the default there is exactly how a label stops ticking its
+     * checkbox. Reported as "the switch does not change state", and it is the
+     * same mistake the guard was written to fix, arriving from the other side.
+     *
+     * So the question is not what the target IS, it is whether the target sits
+     * inside something operated through this default.
+     */
+    const OPERATED = 'label, input, select, textarea, [contenteditable="true"]';
     body.addEventListener('mousedown', (ev) => {
         const t = ev && ev.target;
+        if (t && typeof t.closest === 'function' && t.closest(OPERATED)) return;
+        /* A stub or a text node has no `closest`; fall back to the tag. */
         const tag = t && t.tagName ? String(t.tagName).toUpperCase() : '';
-        if (KEEPS_MOUSEDOWN.includes(tag)) return;
+        if (['INPUT', 'SELECT', 'TEXTAREA', 'OPTION', 'LABEL'].includes(tag)) return;
         if (t && t.isContentEditable) return;
         ev.preventDefault();
     });

@@ -524,10 +524,61 @@ import * as c from './src/kit/controls.js';
 
     const GUITAR_COLORS = ['#ff5552', '#fff352', '#31caff', '#ffae31', '#84ff42', '#e639ff'];
     const BASS_COLORS = ['#ff5552', '#fff352', '#31caff', '#ffae31', '#84ff42', '#e639ff'];
-    const MONO_NOTE = '#e8eef7';
-    const MONO_LINE = '#9aa7b8';
-    const COL_HIT = '#4ade80';
-    const COL_MISS = '#f87171';
+    /*
+     * ── THE DRAWING READS THE KIT'S TOKENS ──────────────────────────────
+     *
+     * These were hex: `#e8eef7`, `#9aa7b8`, `#4ade80`, `#f87171`. Every one of
+     * them is a role the kit already publishes, and three were the WRONG shade
+     * of the right idea — the kit's `good` is #3DDC84, not #4ade80, so a green
+     * head and a green rail in the panel beside it were two different greens.
+     *
+     * Read at CALL TIME, not captured once: the kit writes `--fbk-*` on the
+     * root and rewrites them when a theme changes, so a constant would be
+     * whatever was true when the module loaded. That is the same mistake as
+     * the panel's `repaintControls`, one layer down — except a canvas cannot
+     * inherit a custom property, so it has to ask.
+     *
+     * A cache keyed on the root's own `data-fbk-theme`-less reality would be
+     * premature: `getComputedStyle` on the root is a few microseconds and this
+     * runs once per frame per colour, not per note.
+     */
+    const KIT_FALLBACK = {
+        text: '232 238 252', dim: '138 160 200', accent: '41 168 255',
+        good: '61 220 132', bad: '229 72 77', bg: '5 7 12',
+    };
+
+    function kitInk(role, alpha) {
+        let triplet = KIT_FALLBACK[role] || KIT_FALLBACK.text;
+        try {
+            const v = getComputedStyle(document.documentElement)
+                .getPropertyValue('--fbk-' + role).trim();
+            if (v) triplet = v;
+        } catch (_) { /* no document yet — the fallback is the kit's own value */ }
+        return (alpha === undefined)
+            ? 'rgb(' + triplet + ')'
+            : 'rgb(' + triplet + ' / ' + alpha + ')';
+    }
+
+    /*
+     * The kit's own type stacks, so a fret number on the tab and one in the
+     * panel are the same face. Numbers were already Mono; the TEXT was `Inter`,
+     * which is nothing this design system uses.
+     */
+    function kitFont(role) {
+        const fallback = (role === 'num')
+            ? '"JetBrains Mono", ui-monospace, monospace'
+            : 'Rubik, system-ui, sans-serif';
+        try {
+            const v = getComputedStyle(document.documentElement)
+                .getPropertyValue(role === 'num' ? '--fbk-font-num' : '--fbk-font').trim();
+            return v || fallback;
+        } catch (_) { return fallback; }
+    }
+
+    const MONO_NOTE = () => kitInk('text');
+    const MONO_LINE = () => kitInk('dim');
+    const COL_HIT = () => kitInk('good');
+    const COL_MISS = () => kitInk('bad');
     const COL_BAR = 'rgba(255,255,255,0.34)';
     const COL_BEAT = 'rgba(255,255,255,0.11)';
     const COL_HALF = 'rgba(255,255,255,0.075)';
@@ -536,7 +587,15 @@ import * as c from './src/kit/controls.js';
     // same colour rather than inventing a second vocabulary for it.
     const COL_LOOP = 'rgba(74,222,128,0.85)';
     const COL_LOOP_FILL = 'rgba(74,222,128,0.10)';
-    const COL_PLAYHEAD = 'rgba(255,255,255,0.92)';
+    /*
+     * THE CURSOR IS THE ACCENT, not white.
+     *
+     * White made it one more bright thing among the note heads and the bar
+     * lines; the accent is the only colour in this system that means "here,
+     * now", and it is what the panel's own live rung uses. Reported as part of
+     * the tab's own design pass.
+     */
+    const COL_PLAYHEAD = () => kitInk('accent');
     const NOW_WINDOW = 0.09;
     const ROW_GAP_MAX = 26;
 
@@ -1263,7 +1322,7 @@ import * as c from './src/kit/controls.js';
         let legendW = 0;
         if (S.showStrings) {
             ctx.save();
-            ctx.font = '700 ' + Math.round(8.5 * k) + 'px Inter, system-ui, sans-serif';
+            ctx.font = '700 ' + Math.round(8.5 * k) + 'px ' + kitFont('text');
             for (let l = 0; l < lines; l++) {
                 legendW = Math.max(legendW, ctx.measureText(lineName(l)).width);
             }
@@ -1374,9 +1433,9 @@ import * as c from './src/kit/controls.js';
 
         // Colour. The string palette is the app's, so changing it in Graphics
         // settings changes the tab too; mono is the other way tab is read.
-        const lineOf = (l) => (S.lineInk === 'mono') ? MONO_LINE : (colors[l] || '#888');
+        const lineOf = (l) => (S.lineInk === 'mono') ? MONO_LINE() : (colors[l] || '#888');
         const noteOf = (s) => (S.noteInk === 'mono')
-            ? MONO_NOTE : (colors[s + rowOffset] || '#ddd');
+            ? MONO_NOTE() : (colors[s + rowOffset] || '#ddd');
         const nameOf = (s, fret) => noteNameFor(s + rowOffset, fret, tuning, lines);
 
         // ── What has already gone by ─────────────────────────────────
@@ -1510,7 +1569,7 @@ import * as c from './src/kit/controls.js';
         if (S.showBars) {
             // The number rides the bar line rather than floating over it, so it
             // reads as a label on that line and not as another note.
-            ctx.font = '700 ' + Math.round(9 * k) + 'px Inter, system-ui, sans-serif';
+            ctx.font = '700 ' + Math.round(9 * k) + 'px ' + kitFont('text');
             ctx.textAlign = 'left';
             ctx.textBaseline = 'middle';
             for (const bar of bars) {
@@ -1535,7 +1594,7 @@ import * as c from './src/kit/controls.js';
         // under something else. Down here it sits on the staff's own furniture,
         // and it books its place in the lane like any other label.
         if (S.showTempo && isLive && chart.bpm > 0) {
-            ctx.font = '700 ' + Math.round(9 * k) + 'px Inter, system-ui, sans-serif';
+            ctx.font = '700 ' + Math.round(9 * k) + 'px ' + kitFont('text');
             ctx.textBaseline = 'middle';
             const mark = '♩ ' + Math.round(chart.bpm);
             const mw = ctx.measureText(mark).width;
@@ -1547,7 +1606,16 @@ import * as c from './src/kit/controls.js';
         }
 
         if (wantSect) {
-            ctx.font = '700 ' + Math.round(9.5 * k) + 'px Inter, system-ui, sans-serif';
+            /*
+             * The section name is an EYEBROW — the same step a rack's label
+             * wears in the panel (`t-rack`: 900, 10px, .16em, dim). It names
+             * the region rather than saying anything about now, so it reads as
+             * a legend and not as content. `letterSpacing` on a 2D context is
+             * Chromium-only and degrades to zero tracking elsewhere, which is
+             * the right way round for a progressive detail.
+             */
+            ctx.font = '900 ' + Math.round(10 * k) + 'px ' + kitFont('text');
+            ctx.letterSpacing = Math.round(1.6 * k) + 'px';
             ctx.textAlign = 'left';
             ctx.textBaseline = 'middle';
             for (const sec of chart.sections) {
@@ -1700,7 +1768,7 @@ import * as c from './src/kit/controls.js';
                 // Bend: how far it goes, in the tab's own shorthand.
                 const semis = it.n.bn;
                 const txt = (semis >= 2) ? 'full' : (semis >= 1 ? '½' : '¼');
-                ctx.font = '700 ' + Math.round(fs * 0.8) + 'px Inter, system-ui, sans-serif';
+                ctx.font = '700 ' + Math.round(fs * 0.8) + 'px ' + kitFont('text');
                 ctx.fillStyle = 'rgba(255,255,255,0.7)';
                 ctx.textAlign = 'center';
                 ctx.textBaseline = 'middle';
@@ -1762,8 +1830,8 @@ import * as c from './src/kit/controls.js';
             const ghost = !!it.n.ig;          // rendered but not scored
             let ink = base;
             let ring = base;
-            if (verdict === 'hit') { ink = COL_HIT; ring = COL_HIT; }
-            else if (verdict === 'miss') { ink = COL_MISS; ring = COL_MISS; }
+            if (verdict === 'hit') { ink = COL_HIT(); ring = COL_HIT(); }
+            else if (verdict === 'miss') { ink = COL_MISS(); ring = COL_MISS(); }
 
             ctx.save();
             if (ghost) ctx.globalAlpha = 0.42;
@@ -1852,7 +1920,7 @@ import * as c from './src/kit/controls.js';
             // read. It gives way silently when the next note is too close.
             if (aside) {
                 ctx.font = '700 ' + Math.round(fs * 0.74)
-                    + 'px Inter, system-ui, sans-serif';
+                    + 'px ' + kitFont('text');
                 const aw = ctx.measureText(aside).width;
                 if (roomAfter[oi] > rx + aw + 12 * k) {
                     const ax = x + rx + 3 * k;
@@ -1880,7 +1948,7 @@ import * as c from './src/kit/controls.js';
                     ctx.quadraticCurveTo((prev + x) / 2, y + lift, x - r * 0.5, y + lift * 0.35);
                     ctx.stroke();
                     if (fit > 0.8) {
-                        ctx.font = '700 ' + Math.round(8.5 * k) + 'px Inter, system-ui, sans-serif';
+                        ctx.font = '700 ' + Math.round(8.5 * k) + 'px ' + kitFont('text');
                         ctx.fillStyle = 'rgba(255,255,255,0.6)';
                         ctx.textAlign = 'center';
                         ctx.textBaseline = 'middle';
@@ -1916,7 +1984,7 @@ import * as c from './src/kit/controls.js';
                 if (it.n.ac) above.push('>');
                 if (it.n.fhm) above.push('\u2715');
                 if (above.length) {
-                    ctx.font = '700 ' + Math.round(9 * k) + 'px Inter, system-ui, sans-serif';
+                    ctx.font = '700 ' + Math.round(9 * k) + 'px ' + kitFont('text');
                     ctx.fillStyle = 'rgba(255,255,255,0.6)';
                     ctx.textAlign = 'center';
                     ctx.textBaseline = 'middle';
@@ -1942,7 +2010,7 @@ import * as c from './src/kit/controls.js';
                 }
             }
             const py = staffBottom + headR + 7 * k;
-            ctx.font = '700 ' + Math.round(8.5 * k) + 'px Inter, system-ui, sans-serif';
+            ctx.font = '700 ' + Math.round(8.5 * k) + 'px ' + kitFont('text');
             ctx.textAlign = 'left';
             ctx.textBaseline = 'middle';
             for (const r of runs) {
@@ -1968,7 +2036,7 @@ import * as c from './src/kit/controls.js';
         // you are on across the top; the value here is the alignment.
         if (S.showLyrics && chart.lyrics.length) {
             const ly = staffBottom + headR + 7 * k + (S.showPM ? 15 * k : 0);
-            ctx.font = '600 ' + Math.round(9.5 * k) + 'px Inter, system-ui, sans-serif';
+            ctx.font = '600 ' + Math.round(9.5 * k) + 'px ' + kitFont('text');
             ctx.textAlign = 'center';
             ctx.textBaseline = 'middle';
             for (const ev of chart.lyrics) {
@@ -1986,7 +2054,7 @@ import * as c from './src/kit/controls.js';
         }
 
         if (wantChord) {
-            ctx.font = '700 ' + Math.round(11 * k) + 'px Inter, system-ui, sans-serif';
+            ctx.font = '700 ' + Math.round(11 * k) + 'px ' + kitFont('text');
             ctx.textAlign = 'center';
             ctx.textBaseline = 'middle';
             // Only where the chord actually changes. A label over every strum
@@ -2009,12 +2077,42 @@ import * as c from './src/kit/controls.js';
         }
 
         if (isLive) {
-            ctx.strokeStyle = COL_PLAYHEAD;
-            ctx.lineWidth = Math.max(1, 1.4 * k);
+            /*
+             * A LOOK-AHEAD WASH, then the cursor.
+             *
+             * The wash says what the `Beats ahead` slider MEANS: the notes it
+             * covers are the ones you are about to play, and the ones past it
+             * are context. That was a number in a panel and nothing on the
+             * staff, so the setting had no visible consequence at all.
+             *
+             * Drawn under the cursor and over the strings, in the accent at a
+             * tenth — enough to read as a region, not enough to compete with
+             * anything written in it.
+             */
+            const aheadX = xAt(now + (S.aheadBeats || 0) / Math.max(0.1, beatsPerSec));
+            if (aheadX > playX + 2) {
+                const wash = ctx.createLinearGradient(playX, 0, aheadX, 0);
+                wash.addColorStop(0, kitInk('accent', 0.12));
+                wash.addColorStop(1, kitInk('accent', 0));
+                ctx.fillStyle = wash;
+                ctx.fillRect(playX, band.top + 2 * k, aheadX - playX, band.height - 4 * k);
+            }
+
+            /*
+             * THE CURSOR: three pixels and an alone, because it is the one
+             * thing on the staff that means "now". A 1.4px white hairline was
+             * one more bright vertical among the bar lines.
+             */
+            ctx.save();
+            ctx.strokeStyle = COL_PLAYHEAD();
+            ctx.lineWidth = Math.max(2, 3 * k);
+            ctx.shadowColor = kitInk('accent', 0.7);
+            ctx.shadowBlur = 14 * k;
             ctx.beginPath();
             ctx.moveTo(Math.round(playX) + 0.5, band.top + 4 * k);
             ctx.lineTo(Math.round(playX) + 0.5, band.top + band.height - 3 * k);
             ctx.stroke();
+            ctx.restore();
         }
 
         ctx.restore();
@@ -2023,7 +2121,7 @@ import * as c from './src/kit/controls.js';
         // Outside the clip, and last: they own the margin, nothing may paint
         // over them and they may not paint over the staff.
         if (S.showStrings) {
-            ctx.font = '700 ' + Math.round(8.5 * k) + 'px Inter, system-ui, sans-serif';
+            ctx.font = '700 ' + Math.round(8.5 * k) + 'px ' + kitFont('text');
             ctx.textAlign = 'right';
             ctx.textBaseline = 'middle';
             for (let l = 0; l < lines; l++) {
@@ -3234,7 +3332,15 @@ import * as c from './src/kit/controls.js';
          */
         const paged = c.el('div', 'fbk-duo');
         barsStep = c.stepper({
-            label: 'Bars / staff', value: S.pageBars,
+            /*
+             * `Bars`, not `Bars / staff`.
+             *
+             * It sits beside `Staves` in the same row of the same rack, so the
+             * "per staff" is already said by the thing next to it — and a
+             * stepper's label has half a row: the slash pushed the number down
+             * a line.
+             */
+            label: 'Bars', value: S.pageBars,
             min: FIELD.pageBars.min, max: FIELD.pageBars.max, step: 1,
             onChange: (v) => api.set({ pageBars: v }),
         });
