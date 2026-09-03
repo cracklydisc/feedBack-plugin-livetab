@@ -3002,34 +3002,28 @@ import * as c from './src/kit/controls.js';
      * state is deliberately preserved: a repaint must not open or close it.
      */
     function repaintControls() {
-        if (!controlPanel) return;
-        const open = controlPanel.style.display;
-        controlPanel.style.cssText = panelCSS() + ';z-index:' + panelZ()
-            + ';display:' + (open || 'none');
-        const pill = controlWrap && controlWrap.firstChild;
-        if (pill) pill.style.cssText = pillCSS();
-        for (const el of controlPanel.querySelectorAll('[data-chip]')) {
-            el.style.cssText = chipCSS();
-        }
-        for (const el of controlPanel.querySelectorAll('[data-btn]')) {
-            el.style.cssText = btnCSS();
-        }
-        for (const el of controlPanel.querySelectorAll('[data-heading]')) {
-            el.style.color = ink('textDim');
-        }
-        for (const el of controlPanel.querySelectorAll('input[type="range"],input[type="checkbox"]')) {
-            el.style.accentColor = ink('primary');
-        }
-        const sticky = controlPanel.querySelector('[data-sticky]');
-        if (sticky) sticky.style.background = ink('bg', 0.97);
-        const sel = controlPanel.querySelector('[data-board-select]');
-        if (sel) sel.style.cssText = selectCSS();
-        syncControl();
+        /*
+         * NOTHING TO REPAINT ANY MORE.
+         *
+         * This walked `[data-chip]`, `[data-btn]`, `[data-heading]` and every
+         * input in the panel on each theme change and wrote colours back onto
+         * them one at a time. The kit's colours are custom properties, so a
+         * theme change is a token write on the root and the DOM never hears
+         * about it — see `follow()` in the kit's theme module.
+         */
     }
 
-    let controlWrap = null;
-    let controlLabel = null;
-    let controlPanel = null;
+    /*
+     * WITHDRAWN with the hand-built panel: `controlWrap`, `controlLabel`,
+     * `controlPanel`, and the `controlHeading` / `controlChips` /
+     * `controlSlider` constructors that filled it.
+     *
+     * The kit's `createPanel` owns the chassis, its own opener in the player's
+     * slot, the open and close and the Escape; `panel.setSubtitle` says what
+     * the pill's label used to. Three of those constructors were this file
+     * reinventing a rack, a segmented pick and a slider — which is exactly
+     * what having a kit is for.
+     */
 
     function playerSlot() {
         const fb = window.feedBack;
@@ -3047,161 +3041,70 @@ import * as c from './src/kit/controls.js';
      * user has installed.
      */
     function rebuildBoardButtons() {
-        if (!controlPanel) return;
-        const sel = controlPanel.querySelector('[data-board-select]');
-        if (!sel) return;
-        const ids = Object.keys(BOARDS);
-        const same = sel.options.length === ids.length
-            && ids.every((id, i) => sel.options[i].value === id);
-        if (!same) {
-            sel.textContent = '';
-            for (const id of ids) {
-                const o = document.createElement('option');
-                o.value = id;
-                o.textContent = BOARDS[id].label;
-                sel.appendChild(o);
-            }
-        }
+        /*
+         * The board list is the SELECT's own business now: `rebuild` in
+         * `syncControl` replaces its options when the list changed and leaves
+         * them alone when it did not, which is what this rebuilt by hand.
+         */
         syncControl();
     }
 
     function syncControl() {
-        if (!controlLabel) return;
+        if (!panel) return;
+
+        const active = activePresetId();
+        if (active) lastPresetId = active;
+        const preset = PRESETS.find((x) => x.id === (active || lastPresetId)) || null;
+
         // The preset name says more in one word than the board does: it implies
         // the mode, the staves and how much is written.
-        const active = activePresetId();
-        const preset = active ? PRESETS.find((x) => x.id === active) : null;
         const hidden = !S.enabled && S.readMode === 'scroll' && S.board !== 'none';
-        controlLabel.textContent = hidden
-            ? 'Tab off' : ('Tab · ' + (preset ? preset.label : 'Custom'));
-        if (!controlPanel) return;
-        const mark = (el, on) => {
-            el.style.background = on ? ink('primary', 0.22) : 'transparent';
-            el.style.color = on ? ink('text') : ink('textDim');
-        };
-        for (const el of controlPanel.querySelectorAll('[data-preset]')) {
-            const on = el.getAttribute('data-preset') === active;
-            mark(el, on);
-            el.style.borderColor = on ? ink('primary', 0.6) : ink('border');
+        panel.setSubtitle(hidden
+            ? 'The tab is hidden — the board has the player'
+            : ('Tab · ' + (preset ? preset.label : 'Custom')));
+
+        presetSeg.set(active);
+        /*
+         * EDITED is a MARK on the chip you picked, not a sixth chip: "this is
+         * the preset" and "you have changed something under it" are two facts
+         * about one option.
+         */
+        presetSeg.mark(active ? null : lastPresetId);
+        presetRackRef.setAside(active ? null : 'EDITED');
+        presetReset.hidden = !!active || !lastPresetId;
+
+        // ── MOTION, and which question the mode leaves worth asking ──────
+        modeSeg.set(S.readMode);
+        const scroll = isScroll(S);
+        aheadField.el.hidden = !scroll;
+        pagedRow.hidden = scroll;
+        if (scroll) {
+            const parts = readoutParts('aheadBeats');
+            aheadSlider.set(S.aheadBeats);
+            aheadSlider.setAside(parts.aside);
+        } else {
+            barsStep.set(S.pageBars);
+            staveStep.set(S.rows);
         }
-        const boardSel = controlPanel.querySelector('[data-board-select]');
-        if (boardSel && boardSel.options.length) boardSel.value = S.board;
-        for (const el of controlPanel.querySelectorAll('[data-mode]')) {
-            mark(el, el.getAttribute('data-mode') === S.readMode);
-        }
-        const show = controlPanel.querySelector('[data-show]');
-        if (show) show.checked = !!S.enabled;
-        for (const el of controlPanel.querySelectorAll('[data-enum]')) {
-            const parts = el.getAttribute('data-enum').split(':');
-            const on = S[parts[0]] === parts[1];
-            mark(el, on);
-            el.style.borderColor = on ? ink('primary', 0.6) : ink('border');
-        }
-        for (const el of controlPanel.querySelectorAll('[data-key]')) {
-            el.value = String(S[el.getAttribute('data-key')]);
-        }
-        // A slider that reads 2 while four bars are on screen is a panel
-        // telling a lie, and the first thing it costs is the belief that the
-        // slider does anything at all. Where the pace correction is changing
-        // the number, both are shown: what was asked for, and what is drawn.
-        for (const el of controlPanel.querySelectorAll('[data-out]')) {
-            const key = el.getAttribute('data-out');
-            el.textContent = readout(key) + (el.getAttribute('data-suffix') || '');
-        }
-        // A row for a setting that does not apply right now is not greyed out,
-        // it is gone: the panel is small and read at a glance mid-song.
-        //
-        // Restoring the display it was built with, not the empty string: a
-        // checkbox row is a flex row, and blanking the inline style dropped it
-        // to inline, so it and the slider below shared a line and their labels
-        // ran together.
-        for (const el of controlPanel.querySelectorAll('[data-row]')) {
-            if (el.dataset.shown === undefined) el.dataset.shown = el.style.display || '';
-            const f = FIELD[el.getAttribute('data-row')];
-            el.style.display = (!f || fieldLive(f)) ? el.dataset.shown : 'none';
-        }
+        motionRackRef.setAside(groupAside('reading'));
+
+        headSeg.set(S.noteLabel);
+        headRackRef.setAside(groupAside('look'));
+
+        // ── BOARD ABOVE ──────────────────────────────────────────────────
+        const opts = boardOptions();
+        boardSelect.rebuild(opts.map((o) => o[0]).join('|'),
+            opts.map(([v, label]) => ({ value: v, label })));
+        boardSelect.set(S.board);
+        boardSelect.disable(!scroll);
+        showToggle.set(!!S.enabled);
+        showToggle.el.hidden = !fieldLive(FIELD.enabled);
+        heightField.el.hidden = !fieldLive(FIELD.heightPct) || S.board === 'none';
+        heightSlider.set(S.heightPct);
+        boardRackRef.setAside(groupAside('basics'));
     }
 
-    /**
-     * What a slider's number says, when the number alone would be a lie.
-     *
-     * "Auto (10)" rather than "0", because 0 bars is not a thing and the ten
-     * is what is on screen; "5 -> 7.5" while the pace correction is widening
-     * the window, because a panel reading 5 next to seven and a half beats of
-     * music is a panel nobody will trust twice.
-     */
-    function readout(key) {
-        const map = tempoCache.map;
-        if (key === 'pageBars') return String(S.pageBars);
-        const asked = Math.round(S[key] * 100) / 100;
-        if (key === 'aheadBeats' && S.readMode === 'scroll') {
-            const now = Math.round(S.aheadBeats * paceFactor(map) * 10) / 10;
-            if (now !== asked) return asked + ' → ' + now;
-        }
-        return String(asked);
-    }
 
-    /**
-     * A slider row for one schema field, wired straight to the setting.
-     *
-     * The panel used to spell out its one slider by hand; the moment a second
-     * arrived that stopped being tenable, and the schema already knows the
-     * range, the step and whether the field applies at all.
-     */
-    function controlSlider(key, labelText, suffix) {
-        const f = FIELD[key];
-        const row = document.createElement('label');
-        row.style.cssText = 'display:block;margin-top:8px';
-        row.setAttribute('data-row', key);
-        const txt = document.createElement('span');
-        txt.appendChild(document.createTextNode(labelText + ' '));
-        const out = document.createElement('b');
-        out.setAttribute('data-out', key);
-        out.setAttribute('data-suffix', suffix || '');
-        txt.appendChild(out);
-        row.appendChild(txt);
-        const input = document.createElement('input');
-        input.type = 'range';
-        input.min = String(f.min);
-        input.max = String(f.max);
-        input.step = String(f.step || ((f.type === 'int') ? 1 : 0.1));
-        input.setAttribute('data-key', key);
-        input.style.cssText = 'width:100%';
-        input.addEventListener('input', () => {
-            api.set({ [key]: Number(input.value) });
-        });
-        row.appendChild(input);
-        return row;
-    }
-
-    /** A row of chips that set one enum field. */
-    function controlChips(key, choices) {
-        const row = document.createElement('div');
-        row.style.cssText = 'display:flex;flex-wrap:wrap;gap:4px';
-        row.setAttribute('data-row', key);
-        for (const choice of choices) {
-            const b = document.createElement('button');
-            b.type = 'button';
-            b.setAttribute('data-enum', key + ':' + choice[0]);
-            b.setAttribute('data-chip', '1');
-            b.textContent = choice[1];
-            if (choice[2]) b.title = choice[2];
-            b.style.cssText = chipCSS();
-            b.addEventListener('click', () => { api.set({ [key]: choice[0] }); });
-            row.appendChild(b);
-        }
-        return row;
-    }
-
-    function controlHeading(text, key) {
-        const el = document.createElement('div');
-        el.textContent = text;
-        el.setAttribute('data-heading', '1');
-        if (key) el.setAttribute('data-row', key);
-        el.style.cssText = 'font:700 9px ' + FONT + ';letter-spacing:.08em;'
-            + 'color:' + ink('textDim') + ';margin:8px 0 4px';
-        return el;
-    }
 
     /**
      * Where the panel hangs, and how high it stacks.
@@ -3220,172 +3123,197 @@ import * as c from './src/kit/controls.js';
         return document.getElementById('player') ? 40 : 150;
     }
 
+    /*
+     * ── THE IN-PLAYER PANEL ─────────────────────────────────────────────
+     *
+     * Built from the kit, so this and Riff Repeater are the same object in two
+     * plugins: same chassis, same hatched ears, same racks, same open and
+     * close, same Escape.
+     *
+     * WHAT THIS REPLACED: a hand-built panel of inline `cssText`, with a
+     * `repaintControls` that walked `[data-chip]`, `[data-btn]`,
+     * `[data-heading]` and every input on a theme change and wrote colours
+     * back onto each one. None of that survives — the kit's colours are custom
+     * properties, so a theme change is a token write and the DOM never hears
+     * about it. That whole function's panel half is gone.
+     *
+     * THE RACKS ARE THE DESIGN'S, and each field went to the nearest one:
+     * `Show the tab` sits in BOARD ABOVE's header, because what it does is
+     * hand the room to the board; the read mode and everything about how far
+     * you can see are one rack, MOTION, because changing the mode changes
+     * which of those questions there is to ask.
+     */
     function mountControls() {
-        if (controlWrap && controlWrap.parentNode) return true;
-        const slot = playerSlot();
-        if (!slot) return false;
+        if (panel) return true;
+        if (!playerSlot()) return false;
 
-        controlWrap = document.createElement('div');
-        controlWrap.style.cssText = 'position:relative;display:inline-block';
-
-        const pill = document.createElement('button');
-        pill.type = 'button';
-        pill.style.cssText = pillCSS();
-        controlLabel = document.createElement('span');
-        pill.appendChild(controlLabel);
-        controlWrap.appendChild(pill);
-
-        // Parked in the corner of the window, the way the 3D Highway parks its
-        // own settings pane — same place, same size, so the two feel like one
-        // app rather than two plugins.
-        //
-        // It was anchored to its pill at first, which is where the trouble was:
-        // the player's <main> scrolls and therefore clips, so a panel grown
-        // upward from a pill low on the screen was cut at that element's edge;
-        // and once it fitted, changing a setting that adds a row moved the
-        // whole thing, because a panel pinned by its bottom edge can only grow
-        // upward. Parked in the corner it is clipped by nothing, moves for
-        // nothing, and needs no code to follow anything about.
-        controlPanel = document.createElement('div');
-        controlPanel.style.cssText = panelCSS() + ';z-index:' + panelZ()
-            + ';display:none';
-
-        const showRow = document.createElement('label');
-        showRow.setAttribute('data-row', 'enabled');
-        showRow.style.cssText = 'display:flex;align-items:center;gap:6px;cursor:pointer';
-        const showBox = document.createElement('input');
-        showBox.style.accentColor = ink('primary');
-        showBox.type = 'checkbox';
-        showBox.setAttribute('data-show', '1');
-        showBox.addEventListener('change', () => { api.set({ enabled: showBox.checked }); });
-        showRow.appendChild(showBox);
-        const showTxt = document.createElement('span');
-        showTxt.textContent = 'Show the tab';
-        showRow.appendChild(showTxt);
-
-        // Presets first, and here rather than only in the settings screen:
-        // "give me the reading layout" is a decision taken mid-song, and
-        // walking out to Graphics settings to take it means stopping playing.
-        // Pinned: whatever else the panel grows, these stay reachable. The
-        // presets are the way back out of any state, so losing them off the top
-        // of a scrolled panel leaves someone stuck in a layout they did not
-        // want — and the show/hide switch belongs with them rather than above
-        // them, where the pinned header would slide over it.
-        const presetBox = document.createElement('div');
-        presetBox.setAttribute('data-sticky', '1');
-        presetBox.style.cssText = [
-            'position:sticky', 'top:-10px', 'z-index:2',
-            'background:' + ink('bg', 0.97), 'padding:10px 0 6px', 'margin:-10px 0 0',
-        ].join(';');
-        presetBox.appendChild(showRow);
-        presetBox.appendChild(controlHeading('PRESET'));
-        controlPanel.appendChild(presetBox);
-        const presetRow = document.createElement('div');
-        presetRow.style.cssText = 'display:flex;flex-wrap:wrap;gap:4px';
-        for (const preset of PRESETS) {
-            const b = document.createElement('button');
-            b.type = 'button';
-            b.setAttribute('data-preset', preset.id);
-            b.setAttribute('data-chip', '1');
-            b.textContent = preset.label;
-            b.title = preset.hint;
-            b.style.cssText = chipCSS();
-            b.addEventListener('click', () => { api.applyPreset(preset.id); });
-            presetRow.appendChild(b);
-        }
-        presetBox.appendChild(presetRow);
-
-        controlPanel.appendChild(controlHeading('HOW IT MOVES'));
-        for (const opt of [['scroll', 'Scrolling'], ['page', 'Page turns']]) {
-            const b = document.createElement('button');
-            b.type = 'button';
-            b.setAttribute('data-mode', opt[0]);
-            b.setAttribute('data-btn', '1');
-            b.textContent = opt[1];
-            b.style.cssText = btnCSS();
-            b.addEventListener('click', () => { api.set({ readMode: opt[0] }); });
-            controlPanel.appendChild(b);
-        }
-
-        // How far ahead you can see is the one thing worth reaching for while
-        // playing — it depends on the passage, and you judge it by looking. In
-        // page turns the same question is asked as bars per staff, so the two
-        // share the slot and only the one that applies is shown.
-        controlPanel.appendChild(controlHeading('HOW FAR AHEAD'));
-        controlPanel.appendChild(controlSlider('aheadBeats', 'Beats ahead', ''));
-        controlPanel.appendChild(controlSlider('pageBars', 'Bars per staff', ''));
-        controlPanel.appendChild(controlSlider('rows', 'Staves', ''));
-
-        // Likewise "name this passage for me" is a practice decision, not a
-        // configuration one. The chips are written in the notation itself.
-        controlPanel.appendChild(controlHeading('NOTE HEAD'));
-        controlPanel.appendChild(controlChips('noteLabel', [
-            ['fret', '5', 'The fret number'],
-            ['name', 'A#', 'The note name'],
-            ['both', '5 A#', 'The fret, with the note name beside it'],
-            ['nameFret', 'A# 5', 'The note name, with the fret beside it'],
-        ]));
-
-        controlPanel.appendChild(controlHeading('BOARD ABOVE', 'board'));
-        const boards = document.createElement('select');
-        boards.setAttribute('data-board-select', '1');
-        boards.setAttribute('data-row', 'board');
-        boards.style.cssText = selectCSS();
-        boards.addEventListener('change', () => { api.set({ board: boards.value }); });
-        controlPanel.appendChild(boards);
-
-        controlPanel.appendChild(controlSlider('heightPct', 'Tab height', '%'));
-
-        // Clicking a control focuses it, and the browser then scrolls the
-        // panel to keep the focused thing in view — which is what pushed the
-        // presets out of sight the moment someone changed a setting.
-        //
-        // A button does not need its default, so it can lose it. An input is
-        // not ours to cancel — the default is how a slider is dragged and a
-        // checkbox is ticked, and whether a given browser survives losing it
-        // is not something to rely on. So an input keeps it, and the panel's
-        // scroll position is simply put back afterwards.
-        controlPanel.addEventListener('mousedown', (ev) => {
-            const t = ev.target;
-            if (!t) return;
-            if (t.tagName === 'BUTTON') { ev.preventDefault(); return; }
-            if (t.tagName !== 'INPUT') return;
-            const top = controlPanel.scrollTop;
-            const put = () => { controlPanel.scrollTop = top; };
-            if (window.requestAnimationFrame) requestAnimationFrame(put); else put();
+        panel = kit.createPanel({
+            id: ID,
+            label: 'Tab view',
+            title: 'Tab view — how the tablature reads',
         });
 
-        panelHost().appendChild(controlPanel);
+        // ── PRESET ───────────────────────────────────────────────────────
+        const presetRack = c.rack({ label: 'Preset' });
+        panel.body.appendChild(presetRack.el);
+        presetReset = c.button('fbk-btn fbk-btn-accent fbk-btn-small', 'Reset',
+            'Put every value back to what this preset says',
+            () => { if (lastPresetId) api.applyPreset(lastPresetId); });
+        presetRack.header.appendChild(presetReset);
+        presetRackRef = presetRack;
+        presetSeg = c.segmented(
+            PRESETS.map((x) => ({ value: x.id, label: x.label, title: x.hint })),
+            (id) => { lastPresetId = id; api.applyPreset(id); },
+            'Preset',
+        );
+        presetRack.body.appendChild(presetSeg.el);
 
-        const closePanel = () => { controlPanel.style.display = 'none'; };
+        // ── MOTION: the mode, and whatever it makes worth asking ─────────
+        const motion = c.rack({ label: 'Motion' });
+        panel.body.appendChild(motion.el);
+        motionRackRef = motion;
+        modeSeg = c.segmented(
+            FIELD.readMode.options.map(([v, label]) => ({
+                value: v, label: shortOption(label), title: label,
+            })),
+            (v) => api.set({ readMode: v }),
+            'How the tab moves',
+        );
+        motion.body.appendChild(modeSeg.el);
 
-        pill.addEventListener('click', (ev) => {
-            ev.stopPropagation();
-            const open = controlPanel.style.display !== 'none';
-            controlPanel.style.display = open ? 'none' : 'block';
-            if (!open) controlPanel.scrollTop = 0;
+        /*
+         * CONDITIONAL, and it is the schema's own `when` that decides.
+         *
+         * Scrolling asks how far ahead you can see; page turns asks how much
+         * is on a page. They are never both true, so they share the row rather
+         * than stacking — the design's `Beats ahead <-> Bars/staff + Staves`.
+         */
+        aheadField = c.field({ label: FIELD.aheadBeats.label });
+        aheadSlider = c.slider({
+            min: FIELD.aheadBeats.min, max: FIELD.aheadBeats.max,
+            step: FIELD.aheadBeats.step, unit: FIELD.aheadBeats.unit || '',
+            ariaLabel: FIELD.aheadBeats.label,
+            onInput: (v) => api.set({ aheadBeats: v }),
         });
-        const onDocumentClick = (ev) => {
-            if (!controlWrap.contains(ev.target) && !controlPanel.contains(ev.target)) {
-                closePanel();
-            }
-        };
-        document.addEventListener('click', onDocumentClick);
+        aheadField.body.appendChild(aheadSlider.el);
+        motion.body.appendChild(aheadField.el);
 
-        slot.appendChild(controlWrap);
-        rebuildBoardButtons();
-        watchTheme();
-
-        onTeardown(() => {
-            document.removeEventListener('click', onDocumentClick);
-            if (controlPanel && controlPanel.parentNode) controlPanel.remove();
-            if (controlWrap && controlWrap.parentNode) controlWrap.remove();
-            controlPanel = null;
-            controlWrap = null;
-            controlLabel = null;
+        /*
+         * HALF THE ROW EACH. `fbk-row` lets its children size themselves,
+         * which is right for a label and a value and wrong for a PAIR: two
+         * steppers that shrink to fit leave a gap on the right and read as one
+         * control with something beside it. Bars and staves are one decision
+         * in two halves. Kit `.fbk-duo`.
+         */
+        const paged = c.el('div', 'fbk-duo');
+        barsStep = c.stepper({
+            label: 'Bars / staff', value: S.pageBars,
+            min: FIELD.pageBars.min, max: FIELD.pageBars.max, step: 1,
+            onChange: (v) => api.set({ pageBars: v }),
         });
+        staveStep = c.stepper({
+            label: 'Staves', value: S.rows,
+            min: FIELD.rows.min, max: FIELD.rows.max, step: 1,
+            onChange: (v) => api.set({ rows: v }),
+        });
+        paged.appendChild(barsStep.el);
+        paged.appendChild(staveStep.el);
+        pagedRow = paged;
+        motion.body.appendChild(paged);
+
+        // ── NOTE HEAD ────────────────────────────────────────────────────
+        const heads = c.rack({ label: 'Note head' });
+        panel.body.appendChild(heads.el);
+        headRackRef = heads;
+        headSeg = c.segmented(
+            FIELD.noteLabel.options.map(([v, label]) => ({
+                value: v, label: headGlyph(v) || shortOption(label), title: label,
+            })),
+            (v) => api.set({ noteLabel: v }),
+            'What the note head says',
+        );
+        heads.body.appendChild(headSeg.el);
+
+        // ── BOARD ABOVE, and the switch that hands it the room ───────────
+        const board = c.rack({ label: 'Board above' });
+        panel.body.appendChild(board.el);
+        boardRackRef = board;
+        showToggle = c.toggle('Show the tab',
+            FIELD.enabled.hint, (on) => api.set({ enabled: on }));
+        board.header.appendChild(showToggle.el);
+
+        boardSelect = c.select([], (v) => api.set({ board: v }), {
+            ariaLabel: 'Board above the tab', placeholder: 'Choose',
+        });
+        board.body.appendChild(boardSelect.el);
+
+        heightField = c.field({ label: FIELD.heightPct.label });
+        heightSlider = c.slider({
+            min: FIELD.heightPct.min, max: FIELD.heightPct.max, step: 1,
+            unit: '%', ariaLabel: FIELD.heightPct.label,
+            onInput: (v) => api.set({ heightPct: v }),
+        });
+        heightField.body.appendChild(heightSlider.el);
+        board.body.appendChild(heightField.el);
+
+        panel.attach(playerSlot());
+        syncControl();
         return true;
     }
+
+    /*
+     * WHAT A NOTE HEAD SAYS, drawn rather than named.
+     *
+     * `(5)`, `A#`, `(5) A#`, `A# (5)`: the option IS a picture of the thing, so
+     * a word for it would be a caption on a caption — and the schema's whole
+     * sentence stays as the title, where there is room for it.
+     *
+     * NODES, not characters. The first pass used `⓿` and a circled zero is not
+     * a fret number in a ring; it is whatever the font has. `.fbk-pip` is the
+     * app's own note-head shape, so a `5` in it reads as the thing every board
+     * draws. Segmented labels take a node for exactly this (kit 0.28.0).
+     *
+     * The keys are the SCHEMA's: `fret | name | both | nameFret`. The first
+     * pass guessed `pitch` and `pitchFirst`, so two of the four options fell
+     * through to their sentences and rendered as paragraphs on a chip — which
+     * is how the panel looked wrong in a way that had nothing to do with CSS.
+     */
+    function headGlyph(key) {
+        const pip = () => c.el('span', 'fbk-pip', '5');
+        const name = () => c.el('span', null, 'A♯');
+        const box = c.el('span', 'fbk-glyph');
+        if (key === 'fret') { box.appendChild(pip()); return box; }
+        if (key === 'name') { box.appendChild(name()); return box; }
+        if (key === 'both') { box.appendChild(pip()); box.appendChild(name()); return box; }
+        if (key === 'nameFret') { box.appendChild(name()); box.appendChild(pip()); return box; }
+        return null;
+    }
+
+    let panel = null;
+    let presetRackRef = null;
+    let presetSeg = null;
+    let presetReset = null;
+    let motionRackRef = null;
+    let modeSeg = null;
+    let aheadField = null;
+    let aheadSlider = null;
+    let pagedRow = null;
+    let barsStep = null;
+    let staveStep = null;
+    let headRackRef = null;
+    let headSeg = null;
+    let boardRackRef = null;
+    let boardSelect = null;
+    let showToggle = null;
+    let heightField = null;
+    let heightSlider = null;
+
+    /*
+     * The preset the reader last CHOSE, which is not the one whose values still
+     * hold: change one option under `Study` and no preset matches, and the
+     * panel still has to be able to say which one you edited, and put it back.
+     */
+    let lastPresetId = null;
 
     /**
      * Follow the host's palette for as long as the panel exists.

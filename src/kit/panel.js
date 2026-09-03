@@ -82,6 +82,31 @@ export function createPanel(o) {
     root.appendChild(body);
 
     /*
+     * PRESSING A CONTROL MUST NOT SCROLL THE PANEL.
+     *
+     * The body is the one scrolling child, so giving focus to a button near its
+     * bottom makes the browser scroll it into view — and what leaves the top is
+     * whatever the reader was picking from. Pressing a preset chip scrolled the
+     * preset row off the screen.
+     *
+     * Dropping the mousedown default fixes it, and the exception matters more
+     * than the rule: an INPUT, a SELECT, a TEXTAREA and anything editable are
+     * OPERATED through that default — it is how a slider is dragged and a
+     * checkbox is ticked — so cancelling it there breaks the control. Live Tab
+     * shipped this guard without the exception and Chromium happened to
+     * survive it, which is not a thing to depend on; the two tests that came
+     * with the fix moved here with the code.
+     */
+    const KEEPS_MOUSEDOWN = ['INPUT', 'SELECT', 'TEXTAREA', 'OPTION'];
+    body.addEventListener('mousedown', (ev) => {
+        const t = ev && ev.target;
+        const tag = t && t.tagName ? String(t.tagName).toUpperCase() : '';
+        if (KEEPS_MOUSEDOWN.includes(tag)) return;
+        if (t && t.isContentEditable) return;
+        ev.preventDefault();
+    });
+
+    /*
      * A sticky footer, for the action the panel exists to perform.
      *
      * Reported on Riff Repeater: "does it make sense to have the main action

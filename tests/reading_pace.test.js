@@ -275,51 +275,14 @@ test('holes in the grid are filled in beats rather than swallowed', () => {
     assert.ok(Math.abs(map.pos(40) - 80) < 0.01, `beat ${map.pos(40)} at 40 s`);
 });
 
-// ── The panel's own mousedown ────────────────────────────────────────────────
+// ── The panel's own mousedown MOVED TO THE KIT ──────────────────────────────
 //
-// The panel drops the mousedown default so that focusing a control cannot
-// scroll the presets off the top. It used to drop it for an INPUT too, which
-// is a default that is not ours to cancel: it is how a slider is dragged and a
-// checkbox is ticked. Chromium happened to survive it; that is not a thing to
-// depend on. The real listener is pulled out of source and run against fake
-// events.
-
-function mousedownListener() {
-    const marker = "controlPanel.addEventListener('mousedown', ";
-    const at = SRC.indexOf(marker);
-    assert.notEqual(at, -1, 'the panel no longer binds mousedown');
-    // extractFunction returns the signature too, so this is already the whole
-    // arrow function — wrapping it in another one would just curry it.
-    const fn = extractFunction(SRC.slice(at), '(ev) => ');
-    const ctx = vm.createContext({
-        window: { requestAnimationFrame: (fn) => fn() },
-        controlPanel: { scrollTop: 0 },
-        requestAnimationFrame: (fn) => fn(),
-    });
-    return vm.runInContext('(' + fn + ')', ctx);
-}
-
-function fakeEvent(tagName) {
-    return {
-        target: { tagName: tagName },
-        prevented: false,
-        preventDefault() { this.prevented = true; },
-    };
-}
-
-test('an input keeps the mousedown default it is operated with', () => {
-    const on = mousedownListener();
-    for (const tag of ['INPUT', 'SELECT']) {
-        const ev = fakeEvent(tag);
-        on(ev);
-        assert.equal(ev.prevented, false,
-            `${tag} should be left to handle its own mousedown`);
-    }
-});
-
-test('a button still loses it, so the presets stay put', () => {
-    const on = mousedownListener();
-    const ev = fakeEvent('BUTTON');
-    on(ev);
-    assert.equal(ev.prevented, true);
-});
+// The guard and its two tests now live in `feedBack-plugin-kit`, on
+// `createPanel`, because that is where the scrolling body is: the panel drops
+// the mousedown default so focusing a control cannot scroll the presets off the
+// top, and it must NOT drop it for an input, a select or a textarea, which are
+// operated through that default.
+//
+// The exception is the half this repository got wrong first — it cancelled the
+// default for inputs too and Chromium happened to survive it. Both assertions
+// went to the kit with the code, so every consumer gets them instead of one.

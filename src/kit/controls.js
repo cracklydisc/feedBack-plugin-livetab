@@ -1255,7 +1255,10 @@ export function segmented(items, onPick, ariaLabel, opts = {}) {
      * fitting, so the measure has to be the text.
      */
     const list = items || [];
-    const chars = list.reduce((n, it) => n + String(it.label || '').length, 0);
+    const chars = list.reduce(
+        (n, it) => n + ((it.label && it.label.nodeType) ? 0 : String(it.label || '').length),
+        0,
+    );
     const many = list.length > SEG_MAX_INLINE || chars > SEG_MAX_CHARS;
     const laid = (opts.wrap === undefined) ? many : !!opts.wrap;
     const cls = ['fbk-seg'];
@@ -1268,7 +1271,24 @@ export function segmented(items, onPick, ariaLabel, opts = {}) {
     const marks = new Map();
     for (const it of (items || [])) {
         const b = button('fbk-seg-btn', null, it.title || null, () => onPick(it.value));
-        b.appendChild(el('span', 'fbk-seg-label', it.label));
+        /*
+         * A LABEL CAN BE A NODE, not only a string.
+         *
+         * Some options ARE a picture: `(5) A#` says what a note head shows by
+         * being one, and a word for it would be a caption on a caption. Those
+         * cannot arrive as text, so an item's `label` is appended when it is a
+         * node and set as text when it is not.
+         *
+         * The wrap budget above measures only the string form, which is right:
+         * a drawn option is as wide as it is drawn, not as long as its name.
+         */
+        const label = el('span', 'fbk-seg-label');
+        if (it.label && typeof it.label === 'object' && it.label.nodeType) {
+            label.appendChild(it.label);
+        } else {
+            label.textContent = (it.label === null || it.label === undefined) ? '' : String(it.label);
+        }
+        b.appendChild(label);
         b.setAttribute('aria-pressed', 'false');
         nodes.set(it.value, b);
         wrap.appendChild(b);

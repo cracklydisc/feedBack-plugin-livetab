@@ -1,6 +1,6 @@
 {
   "name": "feedback-plugin-livetab",
-  "version": "0.30.0",
+  "version": "0.31.0",
   "private": true,
   "description": "Tests for the Live Tab visualization plugin for fee[dB]ack.",
   "license": "AGPL-3.0-or-later",

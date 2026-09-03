@@ -3094,3 +3094,61 @@
 /* A rack on a sheet has the room the panel could not give it. */
 .fbk-sheet .fbk-rack { width: 100%; }
 .fbk-sheet .fbk-field { width: 100%; }
+
+/* ═══ 26. A row of two, and a character in a ring ════════════════════════ */
+
+/*
+ * TWO CONTROLS, HALF THE ROW EACH.
+ *
+ * `fbk-row` lets its children size themselves, which is right for a label and
+ * a value and wrong for a PAIR: two steppers that shrink to fit leave a gap on
+ * the right and read as one control with something beside it. `Bars / staff`
+ * and `Staves` are one decision in two halves, and equal halves is how that
+ * reads — the same argument as the footer's two footswitches.
+ */
+.fbk-duo {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: var(--fbk-s-3, 6px);
+}
+
+/*
+ * `width: 100%`, not just `min-width: 0`.
+ *
+ * A grid item stretches only while its width is `auto` — and a stepper is
+ * `inline-flex`, so it shrink-wraps its contents and sits in the middle of its
+ * cell. Measured 168px and 135px in a 330px row: two halves that were not
+ * halves, which is the thing this row exists to prevent.
+ */
+.fbk-duo > * {
+    min-width: 0;
+    width: 100%;
+    box-sizing: border-box;
+}
+
+/*
+ * A CHARACTER IN A RING — the note head's own shape.
+ *
+ * Every board this app has draws a fret number in a ring, so an option meaning
+ * "the head says the fret" is DRAWN rather than named: `(5)` is not a label
+ * for the thing, it is the thing at label size. A first pass used `⓿`, and a
+ * circled zero is not a fret number in a ring — it is whatever the font has.
+ */
+.fbk-pip {
+    display: inline-grid;
+    place-items: center;
+    box-sizing: border-box;
+    width: 18px;
+    height: 18px;
+    border-radius: var(--fbk-radius-pill, 999px);
+    border: var(--fbk-hairline, 1px) solid currentColor;
+    font: var(--fbk-t-num, 700 11px/1.2 monospace);
+    letter-spacing: 0;
+}
+
+/* Two of them, or a pip and a name, with the gap the design draws between. */
+.fbk-glyph {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--fbk-s-3, 6px);
+}
