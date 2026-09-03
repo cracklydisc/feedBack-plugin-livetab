@@ -23,6 +23,27 @@
  *  11. Player control       the two or three choices taken mid-song
  *  12. Public API           window.livetab
  */
+/*
+ * ── THE SHARED KIT ──────────────────────────────────────────────────────
+ *
+ * Vendored under `src/kit/`, copied and never imported from anywhere shared:
+ * there are no import maps in this host and no load-order guarantee between
+ * plugins, and any plugin can be disabled — so a plugin that reached into
+ * another one for its design system would be a plugin that stops rendering
+ * when the reader turns something else off.
+ *
+ * The imports live out here because a module's do, and the IIFE below closes
+ * over this scope, so everything inside it can see them. The IIFE is now
+ * redundant — a module has its own scope — and is kept because removing it
+ * would reindent three thousand lines for no behaviour.
+ *
+ * `plugin.json` gained `scriptType: "module"` for this. The file was already
+ * `'use strict'` and already one closed IIFE, so nothing else about it had to
+ * change.
+ */
+import * as kit from './src/kit/index.js';
+import * as c from './src/kit/controls.js';
+
 (function () {
     'use strict';
 
@@ -76,13 +97,34 @@
     // forgot to change both.
     const VERSION = (function () {
         try {
-            const src = (document.currentScript && document.currentScript.src) || '';
+            /*
+             * `import.meta.url` FIRST, because this file is a module now.
+             *
+             * `document.currentScript` is null inside a module — always, by
+             * spec — so the conversion to `scriptType: "module"` would have
+             * dropped this to 'dev' silently, and 'dev' is what the kit
+             * stylesheet's cache key would then have been for every release.
+             * The `currentScript` read stays as the fallback for a host that
+             * ever serves this as a classic script again.
+             */
+            const src = (typeof import.meta !== 'undefined' && import.meta.url)
+                || (document.currentScript && document.currentScript.src)
+                || '';
             const m = /[?&]v=([^&]+)/.exec(src);
             return m ? decodeURIComponent(m[1]) : 'dev';
         } catch (_) {
             return 'dev';
         }
     })();
+
+    /*
+     * THE KIT'S STYLESHEET, injected by the kit itself.
+     *
+     * `install` prepends the link so the kit loses every specificity tie to
+     * this plugin's own rules, and stamps `?v=` from the version above — which
+     * is why that read had to keep working.
+     */
+    kit.install({ id: ID, version: VERSION });
 
     // ─────────────────────────────────────────────────────────────────────
     // 1. Settings schema — the single source of truth.

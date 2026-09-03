@@ -1,0 +1,3033 @@
+/*
+ * kit 0.18.0 — the shared look.
+ *
+ * Hand-written plain CSS, no Tailwind. A plugin's `styles` capability just
+ * injects a <link>, so real CSS is allowed and is the better choice: this file
+ * carries no utility classes, applies no second preflight, and cannot be
+ * broken by a change to what core's prebuilt Tailwind happens to contain.
+ *
+ * ── THE FOUR LAWS OF THIS FILE ──────────────────────────────────────────
+ *
+ * 1. NO LITERAL COLOUR. Every colour is a `--fbk-*` role. A test reads this
+ *    file and fails on any hex.
+ * 2. NO LITERAL DEVICE. Every glow, gradient, shadow and radius is a `--fbk-*`
+ *    recipe slot with `none` legal, so a glow-less shop skin neutralises the
+ *    glow instead of leaving a control that vanished. (DESIGN.md §6.)
+ * 3. NO LITERAL MEASUREMENT. Every size, space and weight comes from one of
+ *    the three scales — five type steps, six space steps, three control
+ *    heights. The only bare numbers below are `0`, `1px` hairlines expressed
+ *    as `var(--fbk-hairline)`, and the handful of geometry constants a shape
+ *    needs (a 13px toggle knob inside a 19px track).
+ * 4. `hidden` HAS TO HIDE. See the first rule block below.
+ *
+ * The look is a GAME HUD, not a settings sheet: objects with depth over a dark
+ * stage, lit cells rather than bordered boxes, circular steppers matching the
+ * player's own rail, numbers as readouts, and one glowing primary.
+ * DESIGN.md §7–§8 say why each of those.
+ *
+ * Sections, in order:
+ *   0  hidden
+ *   1  the panel shell
+ *   2  structure: sections, folds, fields, rows
+ *   3  type helpers
+ *   4  readouts and plates
+ *   5  family 1 — segmented
+ *   6  family 2 — chips
+ *   7  family 3 — toggle
+ *   8  family 4 — stepper
+ *   9  slider
+ *  10  buttons
+ *  11  meters
+ *  12  small parts: badge, dot, key cap, flash
+ *  13  the rail button
+ *  14  narrow windows and the motion gate
+ *  15  the rack: chassis, racks, wells
+ *  16  the rail
+ *  17  the LED meter
+ *  18  the status line
+ *  19  the list row
+ *  20  the range strip
+ *  21  the folded strip
+ *  22  the field
+ */
+
+/* ═══ 0. `hidden` has to actually hide ═══════════════════════════════════
+ *
+ * The browser's own `[hidden] { display: none }` is a UA rule at specificity
+ * (0,1,0), and so is `.fbk-btn { display: inline-flex }` — and an author rule
+ * beats a UA rule at equal specificity. So every control in this file with an
+ * explicit `display` silently made `el.hidden = true` a no-op, which is how
+ * Riff Repeater ended up showing "Start drill" and "End drill" at the same
+ * time: the JS was correct and the CSS was ignoring it.
+ *
+ * Scoped rather than global — a plugin stylesheet has no business redefining
+ * `[hidden]` for the whole app — but `!important` inside that scope, because
+ * the whole point is to outrank the display rules below.
+ * ═══════════════════════════════════════════════════════════════════════ */
+
+.fbk-panel[hidden],
+.fbk-panel [hidden],
+.fbk-fold [hidden],
+.fbk-open-btn[hidden] { display: none !important; }
+
+/* ═══ 1. The panel shell ═════════════════════════════════════════════════
+ *
+ * Parked top-right, over the player. DESIGN.md §9 has the measured layer map
+ * and the two bug reports that killed anchoring.
+ * ═══════════════════════════════════════════════════════════════════════ */
+
+.fbk-panel {
+    position: fixed;
+    top: 64px;
+    right: var(--fbk-s-5, 10px);
+    z-index: 150;
+    /* 360, per the rack spec. 336 was the old panel's width and it left every
+       field 24px short of the room its label and value actually need. */
+    width: 360px;
+    max-width: calc(100vw - var(--fbk-s-6, 14px) * 2);
+    max-height: 76vh;
+    /*
+     * A FLEX COLUMN, so the footswitch is PINNED rather than sticky.
+     *
+     * The panel scrolled as a whole with `position: sticky` on its ears, and
+     * sticky pins to the SCROLL BOX — when that box is the panel itself, the
+     * footer travels with the content it is supposed to outlast. Reported as
+     * the buttons needing to stay visible with only the inside scrolling,
+     * which is what a column with one scrolling child gives you, and it needs
+     * no sticky at all.
+     */
+    display: flex;
+    flex-direction: column;
+    /*
+     * `hidden` is what makes the corner real.
+     *
+     * A radius on a box whose children paint to its edges is a suggestion
+     * until something clips them — and the hatched ears paint corner to
+     * corner. Which is also why the ears keep their own matching radii: on a
+     * browser that has not composited the clip yet, the head still rounds.
+     */
+    overflow: hidden;
+    overscroll-behavior: contain;
+    box-sizing: border-box;
+
+    border-radius: var(--fbk-radius, 14px);
+    border: var(--fbk-hairline, 1px) solid rgb(var(--fbk-border, 42 46 58));
+    /* A stage-lit object: a real shadow plus a top inner light line. */
+    background: linear-gradient(180deg,
+        rgb(var(--fbk-surface, 12 15 22)),
+        rgb(var(--fbk-bg, 5 7 12)));
+    box-shadow: var(--fbk-panel-shadow, none), var(--fbk-panel-inner, none);
+    color: rgb(var(--fbk-text, 232 238 252));
+
+    font: var(--fbk-t-body, 500 11px/1.45 sans-serif);
+    letter-spacing: var(--fbk-t-body-track, 0);
+}
+
+/* No fade-in. DESIGN.md §10 — a panel froze at 0.8 opacity in a webview. */
+.fbk-panel-open { /* state marker only */ }
+
+.fbk-panel *:focus-visible {
+    outline: 2px solid rgb(var(--fbk-focus, 41 168 255));
+    outline-offset: 2px;
+}
+
+.fbk-head {
+    display: flex;
+    align-items: center;
+    gap: var(--fbk-s-4, 8px);
+    padding: var(--fbk-s-5, 10px) var(--fbk-s-6, 14px);
+    flex: 0 0 auto;
+    z-index: 2;
+    /*
+     * The chassis's top ear, hatched — and the hatch is not decoration for its
+     * own sake. It is the cue that the head and the footer are PART OF THE
+     * UNIT rather than content in it, which is what stops a 700px panel
+     * reading as a scrolling document with a title. The same texture at both
+     * ends brackets the racks between them.
+     *
+     * 0.75, not the 0.22 it shipped at. At 0.22 the stripes existed in the
+     * source and not on the screen — reported as the rack texture needing to
+     * be VISIBLE, which is the whole job of a cue. A texture you have to know
+     * about to notice is a texture that is not doing anything.
+     */
+    background:
+        repeating-linear-gradient(135deg,
+            rgb(var(--fbk-border, 42 46 58) / 0.75) 0 2px,
+            rgb(var(--fbk-border, 42 46 58) / 0) 2px 6px),
+        rgb(var(--fbk-surface, 12 15 22));
+    border-bottom: var(--fbk-hairline, 1px) solid rgb(var(--fbk-border, 42 46 58));
+    border-radius: var(--fbk-radius, 14px) var(--fbk-radius, 14px) 0 0;
+}
+
+/* The unit's own indicator light, left of its name. */
+.fbk-head::before {
+    content: '';
+    flex: 0 0 auto;
+    width: 7px;
+    height: 7px;
+    border-radius: var(--fbk-radius-pill, 999px);
+    background: rgb(var(--fbk-accent, 41 168 255));
+    box-shadow: var(--fbk-lit-halo, none);
+}
+
+/* The title and the song stack, so a long artist name cannot ellipsize the
+   thing you are looking at. */
+.fbk-head-stack {
+    flex: 1 1 auto;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.fbk-title {
+    flex: 0 0 auto;
+    /*
+     * Its own type step, not the label step one size up. `t-display` is 900/14
+     * with 0.12em of tracking — a stamped legend rather than a heading, which
+     * is the difference between a panel that looks like a device and one that
+     * looks like a dialog.
+     */
+    font: var(--fbk-t-display, 900 14px/1.15 sans-serif);
+    letter-spacing: var(--fbk-t-display-track, 0.12em);
+    text-transform: uppercase;
+}
+
+.fbk-subtitle {
+    flex: 1 1 auto;
+    min-width: 0;
+    color: rgb(var(--fbk-dim, 138 160 200));
+    font: var(--fbk-t-rack, 900 10px/1.2 sans-serif);
+    letter-spacing: var(--fbk-t-rack-track, 0.16em);
+    text-transform: uppercase;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+/*
+ * THE SCROLLBAR IS PART OF THE UNIT TOO.
+ *
+ * A default scrollbar on a dark rack is a bright grey slab in the corner: the
+ * one piece of chrome in the panel that belongs to the browser rather than to
+ * the design, and the eye finds it before it finds the primary. So it gets the
+ * same treatment as everything else — a well for the track, the control tone
+ * for the thumb, the accent on hover.
+ *
+ * Both syntaxes on purpose. `scrollbar-color` is the standard and Firefox
+ * honours nothing else; `::-webkit-scrollbar` is the only thing Chromium reads.
+ * Neither is a fallback for the other.
+ */
+.fbk-body {
+    scrollbar-color: rgb(var(--fbk-surface-2, 30 34 44)) rgb(var(--fbk-bg, 5 7 12));
+}
+
+.fbk-body::-webkit-scrollbar { width: 10px; }
+
+.fbk-body::-webkit-scrollbar-track {
+    background: rgb(var(--fbk-bg, 5 7 12));
+    border-radius: var(--fbk-radius-pill, 999px);
+}
+
+.fbk-body::-webkit-scrollbar-thumb {
+    border-radius: var(--fbk-radius-pill, 999px);
+    background: rgb(var(--fbk-surface-2, 30 34 44));
+    /* An inset border, so the thumb reads as sitting IN the track rather than
+       filling it — the same recess/raise language as the wells. */
+    border: 2px solid rgb(var(--fbk-bg, 5 7 12));
+}
+
+.fbk-body::-webkit-scrollbar-thumb:hover {
+    background: rgb(var(--fbk-accent, 41 168 255) / 0.7);
+}
+
+.fbk-body {
+    /* The one scrolling child. `min-height: 0` because a flex item will not
+       shrink below its content without it — which is how a pane meant to
+       scroll ends up merely tall. */
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    scrollbar-width: thin;
+    padding: 0 var(--fbk-s-6, 14px);
+}
+
+/*
+ * The sticky footer — where the panel's one verb lives.
+ *
+ * Same mechanism as the head, mirrored: it travels with the content until it
+ * reaches the bottom of the viewport box and then stays. A short panel keeps
+ * it in the natural flow; a long one always has the action on screen. One
+ * layout, two behaviours, no media query.
+ *
+ * `:empty` collapses it completely, so a panel with no single action pays no
+ * padding, no hairline and no space for a footer it never fills.
+ */
+.fbk-foot {
+    flex: 0 0 auto;
+    z-index: 2;
+    padding: var(--fbk-s-5, 10px) var(--fbk-s-6, 14px);
+    /* The chassis's bottom ear: the same hatch as the head, so the two bracket
+       the racks between them and the panel reads as a unit rather than as a
+       scrolling document with a title. */
+    background:
+        repeating-linear-gradient(135deg,
+            rgb(var(--fbk-border, 42 46 58) / 0.75) 0 2px,
+            rgb(var(--fbk-border, 42 46 58) / 0) 2px 6px),
+        rgb(var(--fbk-surface, 12 15 22));
+    border-top: var(--fbk-hairline, 1px) solid rgb(var(--fbk-border, 42 46 58));
+    border-radius: 0 0 var(--fbk-radius, 14px) var(--fbk-radius, 14px);
+}
+
+.fbk-foot:empty {
+    padding: 0;
+    border-top: 0;
+}
+
+/*
+ * In the footer the primary loses its outer margins — the footer's own
+ * padding is the spacing now, and a 10px margin inside a 6px padding is how a
+ * pinned bar ends up looking loose at the top and tight at the bottom.
+ */
+.fbk-foot .fbk-btn-primary,
+.fbk-foot .fbk-btn-stop { margin: 0; }
+
+/*
+ * Less side padding in the footer, because the primary is narrower there.
+ *
+ * 20px of padding is right for a full-width button on its own line. Beside an
+ * alternative the primary is ~220px, and 20px then reads as the key cap being
+ * jammed into the corner — reported as "the D badge is too close to the edge".
+ */
+.fbk-foot .fbk-btn-primary,
+.fbk-foot .fbk-btn-stop { padding: 0 var(--fbk-s-4, 8px); }
+
+/*
+ * The alternative beside the footswitch matches its SIZE and its case.
+ *
+ * Two buttons on one bar at two different heights read as two different KINDS
+ * of thing, which is the opposite of what the pair is for: they are two ways
+ * to start. The primary got `h-lg` from its own rule and the secondary kept
+ * `h-md` from the base button, so the bar had a 56px button next to a 40px one
+ * — reported, and visible from across the room.
+ *
+ * Same height, same case, different tier. The glow still says which is which,
+ * and it is the only thing that needs to.
+ */
+.fbk-foot .fbk-btn {
+    height: var(--fbk-h-lg, 56px);
+    min-height: var(--fbk-h-lg, 56px);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    font-weight: 800;
+    /* 15px, because these two are read from across a room and pressed without
+       looking — the only type in the panel that has to work in peripheral
+       vision. */
+    font-size: 15px;
+}
+
+/*
+ * And the cap itself is one step bigger on a primary.
+ *
+ * 18px next to a 14px/800 label reads as a scrap rather than a key — the
+ * other half of the same report. It stays smaller than the label, because it
+ * is a hint about the keyboard and not part of the sentence.
+ */
+.fbk-foot .fbk-btn-primary .fbk-kbd,
+.fbk-foot .fbk-btn-stop .fbk-kbd {
+    height: 22px;
+    font-size: 11px;
+}
+
+
+
+/* ═══ 2. Structure ═══════════════════════════════════════════════════════
+ *
+ * A section heading with a hairline that finishes its row, its FOLD variant
+ * for a block of policy (DESIGN.md §15), and a `field` whose label sits either
+ * above the control or in a fixed-width column to its left — never in a ragged
+ * column, which is what made the rows start at four different x positions.
+ * ═══════════════════════════════════════════════════════════════════════ */
+
+.fbk-section {
+    display: flex;
+    align-items: center;
+    gap: var(--fbk-s-3, 6px);
+    margin: var(--fbk-s-6, 14px) 0 var(--fbk-s-3, 6px);
+}
+
+.fbk-section:first-child { margin-top: 0; }
+
+.fbk-section-title {
+    flex: 0 0 auto;
+    margin: 0;
+    font: var(--fbk-t-micro, 900 10px/1.2 sans-serif);
+    letter-spacing: var(--fbk-t-micro-track, 0.16em);
+    text-transform: uppercase;
+    color: rgb(var(--fbk-dim, 138 160 200));
+}
+
+/* Fills the rest of the heading's row, so a heading reads as a divider
+   rather than as another line of text. */
+.fbk-section-rule {
+    flex: 1 1 auto;
+    height: var(--fbk-hairline, 1px);
+    background: linear-gradient(90deg,
+        rgb(var(--fbk-border, 42 46 58)),
+        rgb(var(--fbk-border, 42 46 58) / 0));
+}
+
+/*
+ * A FOLD — the section heading, with its body shut and its value still shown.
+ *
+ *     HOW YOU DRILL   80 → 90 → 100 · 85%              ›
+ *
+ * It borrows the heading's type and colour on purpose: it IS a heading, and a
+ * reader should not have to learn a second thing. What it does not borrow is
+ * the rule, because the summary occupies that space — the summary is the
+ * divider here.
+ *
+ * The whole head is the target. A chevron alone is a 14px hit area for a job
+ * that has a 296px row available (DESIGN.md §12), and it is the row people
+ * aim at anyway.
+ */
+.fbk-fold { margin: var(--fbk-s-6, 14px) 0 var(--fbk-s-3, 6px); }
+
+.fbk-fold:first-child { margin-top: 0; }
+
+.fbk-fold-head {
+    display: flex;
+    align-items: center;
+    gap: var(--fbk-s-3, 6px);
+    /*
+     * `width: 100%` and NO negative margins, and both halves of that were
+     * learned the hard way.
+     *
+     * A `<button>` shrink-to-fits even with `display: flex` — its `width:
+     * auto` is fit-content, not fill-available, because the UA treats it as
+     * an atomic box for intrinsic sizing. So `width: 100%` is not optional
+     * here; removing it collapsed the head to 264px of a 296px row.
+     *
+     * And a FIXED-width box with negative horizontal margins SHIFTS rather
+     * than widens: `margin: 0 -6px` put the head 6px left of its parent and
+     * 6px short on the right, which bled the hover surface out of one side
+     * only and left the summary 12px inside the alignment §18 moved it to
+     * join. The bleed was the nicer detail and the alignment is the one that
+     * was written down, so the bleed went.
+     */
+    width: 100%;
+    min-height: var(--fbk-h-sm, 24px);
+    padding: 0;
+    background: none;
+    border: 0;
+    text-align: left;
+    cursor: pointer;
+    color: inherit;
+    font: inherit;
+}
+
+.fbk-fold-title {
+    flex: 0 0 auto;
+    font: var(--fbk-t-micro, 900 10px/1.2 sans-serif);
+    letter-spacing: var(--fbk-t-micro-track, 0.16em);
+    text-transform: uppercase;
+    color: rgb(var(--fbk-dim, 138 160 200));
+}
+
+/*
+ * The value, in the body type rather than the heading's.
+ *
+ * It has to read as CONTENT, not as more heading — it is standing in for the
+ * controls, so it carries their weight, not the label's. `min-width: 0` plus
+ * the ellipsis because a summary is the one string here whose length the kit
+ * cannot bound.
+ */
+/*
+ * The value, in the body type rather than the heading's, and RIGHT-ALIGNED.
+ *
+ * Right, because every other value in a panel like this one lands on the
+ * body's right edge — a slider's readout, a meter's percentage — and a third
+ * ragged edge is one alignment too many. It is the flexible child between two
+ * fixed ones, which is what lets it ellipsize.
+ */
+.fbk-fold-summary {
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    text-align: right;
+    font: var(--fbk-t-label, 700 13px/1.25 sans-serif);
+    letter-spacing: var(--fbk-t-label-track, 0);
+    color: rgb(var(--fbk-text, 232 238 252));
+}
+
+/*
+ * The chevron: LEADING, and at the value's contrast rather than the label's.
+ *
+ * It was trailing and dim — the only signal that the row does anything, at
+ * the lowest contrast in the row, at the far end from the text. Refactoring
+ * UI's rule about weight and contrast cuts the other way here: this is a
+ * small, light glyph, so it needs MORE contrast than the heading beside it,
+ * not less.
+ */
+.fbk-fold-chev {
+    flex: 0 0 auto;
+    width: 12px;
+    font-size: 15px;
+    line-height: 1;
+    text-align: center;
+    color: rgb(var(--fbk-text, 232 238 252));
+    transition: transform var(--fbk-motion, 140ms ease);
+}
+
+.fbk-fold[data-open="true"] .fbk-fold-chev { transform: rotate(90deg); }
+
+/*
+ * A hover surface on the WHOLE head.
+ *
+ * Covering the row exactly, because the row is the hit target (DESIGN.md §12)
+ * and a hover state narrower than the target teaches the wrong thing about
+ * where to click.
+ */
+.fbk-fold-head {
+    border-radius: var(--fbk-radius-sm, 8px);
+    transition: background var(--fbk-motion, 140ms ease);
+}
+
+.fbk-fold-head:hover { background: rgb(var(--fbk-surface-2, 30 34 44)); }
+
+.fbk-fold-head:hover .fbk-fold-title { color: rgb(var(--fbk-text, 232 238 252)); }
+
+.fbk-fold-head:focus-visible {
+    outline: var(--fbk-hairline, 1px) solid rgb(var(--fbk-accent, 41 168 255));
+    outline-offset: var(--fbk-s-2, 4px);
+}
+
+/* An open fold shows the heading's rule under it instead of a summary — the
+   divider comes back once the summary is no longer doing that job. */
+.fbk-fold[data-open="true"] .fbk-fold-summary { color: rgb(var(--fbk-dim, 138 160 200) / 0.55); }
+
+.fbk-fold-body { padding-top: var(--fbk-s-2, 4px); }
+
+/*
+ * A row.
+ *
+ * `min-height` is the medium control height, so a row with nothing but a
+ * label still occupies the same band as a row with a stepper in it. That is
+ * where vertical rhythm actually comes from — not from margins.
+ */
+.fbk-row {
+    display: flex;
+    align-items: center;
+    gap: var(--fbk-s-3, 6px);
+    flex-wrap: wrap;
+    min-height: var(--fbk-h-md, 40px);
+    margin: var(--fbk-s-2, 4px) 0;
+}
+
+.fbk-row-tight { min-height: 0; margin: var(--fbk-s-1, 2px) 0; }
+
+/*
+ * A row that must stay on one line.
+ *
+ * WRAPPING SHRINKS NOTHING. A wrapping flex container breaks the line before
+ * it shrinks anything, so a row whose children come to 332px in a 296px body
+ * puts its last child on a second line rather than asking the flexible one to
+ * give up 36px — `flex-shrink: 1` and `min-width: 0` are both powerless while
+ * wrapping is allowed. Pair this with `min-width: 0` on whichever child gives.
+ */
+.fbk-row-nowrap { flex-wrap: nowrap; }
+
+/* A label above its control. Use when the label is long or the control is
+   full-width. */
+.fbk-label {
+    display: block;
+    margin-bottom: var(--fbk-s-2, 4px);
+    font: var(--fbk-t-micro, 900 10px/1.2 sans-serif);
+    letter-spacing: var(--fbk-t-micro-track, 0.16em);
+    text-transform: uppercase;
+    color: rgb(var(--fbk-dim, 138 160 200));
+}
+
+/*
+ * A label in the column to the left of its control.
+ *
+ * ONE WIDTH, shared by every row — that is the whole point. Before this, each
+ * row's control started wherever its own label ended, and in a 336px panel
+ * four different start positions read as sloppiness even when nothing else
+ * was wrong. A label that does not fit becomes a `.fbk-label` above the
+ * control; it does not widen the column.
+ */
+.fbk-label-inline {
+    flex: 0 0 var(--fbk-label-w, 62px);
+    width: var(--fbk-label-w, 62px);
+    margin-bottom: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.fbk-push { margin-left: auto; }
+
+/*
+ * WITHDRAWN in 0.8.0: `.fbk-field` and `.fbk-hint`.
+ *
+ * `.fbk-field` (a label line above a full-width control) existed for one
+ * version, to widen a slider that was being squeezed by its own value. Putting
+ * the value next to its LABEL instead does the same job on one row, so the
+ * field was solving a problem that had a cheaper answer. A class with no
+ * consumer is a class nobody has tested.
+ *
+ * `.fbk-hint` (supporting prose under a group heading) lasted one version too,
+ * and §4 had already answered it: no paragraph of explanation, and no box
+ * drawn to hold one. Riff Repeater used it for two, and the report was blunt —
+ * "dead space; nobody playing a music game reads paragraphs of explanation
+ * every time". A `?` badge with the sentence in its tooltip is the device this
+ * kit already had for that, and §4 is why.
+ */
+
+.fbk-note {
+    margin: var(--fbk-s-3, 6px) 0 0;
+    color: rgb(var(--fbk-dim, 138 160 200));
+    font: var(--fbk-t-body, 500 11px/1.45 sans-serif);
+    font-size: 11px;              /* the body step, one down: a footnote */
+}
+
+/* ═══ 3. Type helpers ════════════════════════════════════════════════════
+ *
+ * For the rare element that is only type. Every component below sets its own
+ * step directly; these exist so a consumer never has to invent a sixth.
+ * ═══════════════════════════════════════════════════════════════════════ */
+
+.fbk-t-display { font: var(--fbk-t-display); letter-spacing: var(--fbk-t-display-track); }
+.fbk-t-value { font: var(--fbk-t-value); letter-spacing: var(--fbk-t-value-track); font-variant-numeric: tabular-nums; }
+.fbk-t-body { font: var(--fbk-t-body); letter-spacing: var(--fbk-t-body-track); }
+.fbk-t-label { font: var(--fbk-t-label); letter-spacing: var(--fbk-t-label-track); }
+.fbk-t-micro { font: var(--fbk-t-micro); letter-spacing: var(--fbk-t-micro-track); text-transform: uppercase; }
+
+/* ═══ 4. Readouts and plates ═════════════════════════════════════════════ */
+
+/*
+ * A number and its unit, as one object.
+ *
+ * The unit borrows the micro step's SIZE and WEIGHT but not its 0.1em
+ * tracking: at that tracking the trailing space pushed the unit visibly away
+ * from its number and `85 %` read as two things instead of one.
+ */
+.fbk-readout {
+    display: inline-flex;
+    align-items: baseline;
+    gap: var(--fbk-s-1, 2px);
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+}
+
+.fbk-readout-value {
+    font: var(--fbk-t-value, 700 11px/1.2 monospace);
+    letter-spacing: var(--fbk-t-value-track, 0.02em);
+    color: rgb(var(--fbk-text, 232 238 252));
+}
+
+.fbk-readout-unit {
+    font: var(--fbk-t-micro, 900 10px/1.2 sans-serif);
+    letter-spacing: 0.02em;
+    color: rgb(var(--fbk-dim, 138 160 200));
+}
+
+/* The one big number in a panel, when there is one. */
+.fbk-readout-lg .fbk-readout-value {
+    font: var(--fbk-t-display, 900 14px/1.15 sans-serif);
+    letter-spacing: var(--fbk-t-display-track, 0.12em);
+}
+
+/* A slab of facts about whatever is selected. */
+/*
+ * TWO SIGNALS FOR ONE BOUNDARY, so one of them goes.
+ *
+ * The plate had a hairline border AND its own darker background, inside a
+ * panel that also has a border. Refactoring UI's advice is to pick one: a
+ * different background colour, a shadow, or extra space — a border on top of
+ * a background that already separates the box is the thing that makes a
+ * layout read as boxes inside boxes. Measured, this panel had 41 bordered
+ * elements; most are the four control families, where the border IS the
+ * control, and three were containers doing it twice. This is one of them.
+ */
+.fbk-plate {
+    display: flex;
+    flex-direction: column;
+    gap: var(--fbk-s-1, 2px);
+    margin: var(--fbk-s-3, 6px) 0;
+    padding: var(--fbk-s-3, 6px) var(--fbk-s-4, 8px);
+    border-radius: var(--fbk-radius-sm, 8px);
+    background: rgb(var(--fbk-surface-2, 30 34 44));
+    box-shadow: var(--fbk-panel-inner, none);
+}
+
+.fbk-plate-title {
+    font: var(--fbk-t-body, 500 11px/1.45 sans-serif);
+    font-weight: 700;
+    letter-spacing: var(--fbk-t-body-track, 0);
+}
+
+.fbk-plate-meta {
+    color: rgb(var(--fbk-dim, 138 160 200));
+    font: var(--fbk-t-label, 700 13px/1.25 sans-serif);
+    font-weight: 500;
+    letter-spacing: var(--fbk-t-label-track, 0);
+    font-variant-numeric: tabular-nums;
+}
+
+/* ═══ 5. Family 1 — SEGMENTED: pick one of a small fixed set ═════════════
+ *
+ * An inset track holding cells that light up. Height is `h-md` exactly, so a
+ * segmented control and a stepper on the next row sit on the same band.
+ * ═══════════════════════════════════════════════════════════════════════ */
+
+.fbk-seg {
+    display: flex;
+    gap: var(--fbk-s-1, 2px);
+    padding: var(--fbk-s-1, 2px);
+    flex: 1 1 auto;
+    box-sizing: border-box;
+    height: var(--fbk-h-md, 40px);
+    border-radius: var(--fbk-radius-sm, 8px);
+    background: rgb(var(--fbk-surface-2, 30 34 44));
+    border: var(--fbk-hairline, 1px) solid rgb(var(--fbk-border, 42 46 58));
+    box-shadow: var(--fbk-panel-inner, none);
+}
+
+.fbk-seg-btn {
+    flex: 1 1 0;
+    min-width: 0;
+    border: 0;
+    border-radius: calc(var(--fbk-radius-sm, 8px) - var(--fbk-s-1, 2px));
+    padding: 0 var(--fbk-s-2, 4px);
+    background: transparent;
+    color: rgb(var(--fbk-dim, 138 160 200));
+    font: var(--fbk-t-label, 700 13px/1.25 sans-serif);
+    letter-spacing: var(--fbk-t-label-track, 0);
+    font-variant-numeric: tabular-nums;
+    cursor: pointer;
+    transition: color var(--fbk-motion, 140ms ease),
+                background var(--fbk-motion, 140ms ease);
+}
+
+.fbk-seg-btn:hover:not(:disabled):not(.fbk-on) {
+    color: rgb(var(--fbk-text, 232 238 252));
+    background: rgb(var(--fbk-border, 42 46 58) / 0.35);
+}
+
+/*
+ * WRAPPED, past four options — the same control, laid out as chips.
+ *
+ * Five named labels in one 360px row get about 66px each, which truncates a
+ * word like `Sight-reading` or stops being a row. So the options break onto a
+ * second line and stop pretending to be a joined switch: each takes its own
+ * ground and its own corner, sized to its label rather than to a share.
+ *
+ * The container drops its own well too. A wrapping group of separate chips is
+ * not one object with segments cut into it, and drawing a box round two ragged
+ * lines only says "this box is the wrong shape".
+ */
+.fbk-seg-wrap {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--fbk-s-3, 6px);
+    height: auto;
+    padding: 0;
+    border: 0;
+    background: none;
+    box-shadow: none;
+}
+
+.fbk-seg-wrap .fbk-seg-btn {
+    position: relative;
+    flex: 0 0 auto;
+    height: var(--fbk-h-md, 40px);
+    padding: 0 var(--fbk-s-6, 14px);
+    border-radius: var(--fbk-radius-sm, 8px);
+    border: var(--fbk-hairline, 1px) solid rgb(var(--fbk-border, 42 46 58));
+    background: rgb(var(--fbk-surface-2, 30 34 44));
+    box-shadow: var(--fbk-control-lift, none);
+}
+
+.fbk-seg-wrap .fbk-seg-btn:hover:not(:disabled):not(.fbk-on) {
+    background: rgb(var(--fbk-surface, 12 15 22));
+    border-color: rgb(var(--fbk-dim, 138 160 200) / 0.5);
+    box-shadow: var(--fbk-control-lift-on, none);
+}
+
+/*
+ * A MARK ON A CHIP, for the fact its label cannot carry.
+ *
+ * "This is the preset you picked" is the chip being lit. "And you have since
+ * changed something under it" is a second fact about the same chip, so it
+ * cannot be another chip — it is a dot on this one, in the same hue the rack's
+ * header uses for EDITED, because they are saying one thing in two places.
+ */
+.fbk-seg-mark {
+    flex: 0 0 auto;
+    width: 6px;
+    height: 6px;
+    margin-left: var(--fbk-s-3, 6px);
+    border-radius: var(--fbk-radius-pill, 999px);
+    background: rgb(var(--fbk-mid, 245 165 36));
+}
+
+.fbk-seg-mark[data-tone="warn"] { background: rgb(var(--fbk-bad, 229 72 77)); }
+
+/* The label needs a box of its own now that a chip can hold two things. */
+.fbk-seg-btn { display: inline-flex; align-items: center; justify-content: center; }
+.fbk-seg-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/*
+ * The HEADER size: a unit or a mode set once, in a rack's header slot.
+ *
+ * AFTER `.fbk-seg` and `.fbk-seg-btn` on purpose: both are single-class
+ * selectors, so at equal specificity source order decides. Written above them
+ * this rule lost, silently, and a header switch rendered at the row height —
+ * the same cascade trap that made `.fbk-row-nowrap` a kit rule in the first
+ * place (§13).
+ *
+ * `h-sm` and the tighter radius, because it is not something you reach for
+ * mid-song — the spec's own split, and a better question than "how big is a
+ * segmented control".
+ */
+.fbk-seg-header {
+    flex: 0 0 auto;
+    height: var(--fbk-h-sm, 24px);
+    border-radius: var(--fbk-radius-seg, 5px);
+}
+
+.fbk-seg-header .fbk-seg-btn {
+    flex: 0 0 auto;
+    padding: 0 var(--fbk-s-4, 8px);
+    border-radius: calc(var(--fbk-radius-seg, 5px) - var(--fbk-s-1, 2px));
+    font-size: 10px;
+}
+
+
+/* A LIT cell, not a bordered box. The halo is a slot, so a glow-less skin
+   gets the fill alone and still reads as selected. */
+.fbk-seg-btn.fbk-on {
+    background: var(--fbk-lit-fill, rgb(var(--fbk-accent, 41 168 255)));
+    color: var(--fbk-lit-on, rgb(var(--fbk-on-accent, 5 7 12)));
+    box-shadow: var(--fbk-lit-halo, none);
+}
+
+/* ═══ 6. Family 2 — CHIPS: pick a subset ═════════════════════════════════
+ *
+ * `.fbk-chips-rail` puts them on a track, which is what lets one chip group
+ * be a setting when idle and a progress display when something is running —
+ * DESIGN.md §5, and the best control the kit has.
+ *
+ * FOUR STATES, and they must stay visually ordered: `now` is the loudest
+ * (filled + halo), `done` is green, `on` is an accent outline, and no class
+ * is a quiet outline. A reader has to be able to rank them at a glance.
+ * ═══════════════════════════════════════════════════════════════════════ */
+
+.fbk-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--fbk-s-2, 4px);
+    flex: 1 1 auto;
+}
+
+/*
+ * The rail.
+ *
+ * `space-between` with chips at their NATURAL width, not stretched — the first
+ * version gave them `flex: 1 1 0` and they grew to fill the row, covering the
+ * rail completely and turning a ladder into a row of touching pills. The rail
+ * only reads as a climb if you can see it between the rungs.
+ */
+.fbk-chips-rail {
+    position: relative;
+    flex-wrap: nowrap;
+    justify-content: space-between;
+    gap: var(--fbk-s-2, 4px);
+    align-items: center;
+}
+
+/* Behind the chips, inset so it starts and ends under the outer two rather
+   than sticking out past them. */
+.fbk-chips-rail::before {
+    content: '';
+    position: absolute;
+    left: var(--fbk-s-4, 8px);
+    right: var(--fbk-s-4, 8px);
+    top: 50%;
+    height: 2px;
+    margin-top: -1px;
+    background: rgb(var(--fbk-border, 42 46 58));
+}
+
+.fbk-chip {
+    position: relative;
+    z-index: 1;
+    box-sizing: border-box;
+    height: var(--fbk-h-sm, 24px);
+    padding: 0 var(--fbk-s-4, 8px);
+    border: var(--fbk-hairline, 1px) solid rgb(var(--fbk-border, 42 46 58));
+    border-radius: var(--fbk-radius-pill, 999px);
+    background: rgb(var(--fbk-surface-2, 30 34 44));
+    color: rgb(var(--fbk-dim, 138 160 200));
+    font: var(--fbk-t-label, 700 13px/1.25 sans-serif);
+    letter-spacing: var(--fbk-t-label-track, 0);
+    font-variant-numeric: tabular-nums;
+    cursor: pointer;
+    transition: color var(--fbk-motion, 140ms ease),
+                border-color var(--fbk-motion, 140ms ease),
+                background var(--fbk-motion, 140ms ease);
+}
+
+.fbk-chips-rail .fbk-chip {
+    flex: 0 0 auto;
+    min-width: var(--fbk-h-md, 40px);
+    padding: 0 var(--fbk-s-3, 6px);
+}
+
+.fbk-chip:hover:not(:disabled) {
+    color: rgb(var(--fbk-text, 232 238 252));
+    border-color: rgb(var(--fbk-dim, 138 160 200) / 0.6);
+}
+
+/* In the set. */
+.fbk-chip.fbk-on {
+    border-color: rgb(var(--fbk-accent, 41 168 255));
+    background: rgb(var(--fbk-accent, 41 168 255) / 0.14);
+    color: rgb(var(--fbk-text, 232 238 252));
+}
+
+/* Where we are NOW — the one filled chip, so the eye lands on it. */
+.fbk-chip.fbk-now {
+    background: var(--fbk-lit-fill, rgb(var(--fbk-accent, 41 168 255)));
+    border-color: rgb(var(--fbk-accent-hi, 96 194 255));
+    color: var(--fbk-lit-on, rgb(var(--fbk-on-accent, 5 7 12)));
+    box-shadow: var(--fbk-lit-halo, none);
+}
+
+/* Cleared. Green is only ever this — DESIGN.md §3. */
+.fbk-chip.fbk-done {
+    border-color: rgb(var(--fbk-good, 61 220 132));
+    background: rgb(var(--fbk-good, 61 220 132) / 0.14);
+    color: rgb(var(--fbk-text, 232 238 252));
+}
+
+/* ═══ 7. Family 3 — TOGGLE: a boolean ════════════════════════════════════
+ *
+ * Geometry is the one place bare numbers are honest: a 13px knob inside a
+ * 19px track with 2px of inset, and a 15px travel. Those are one shape, not
+ * three spacing decisions, and putting them on the space scale would make the
+ * knob wrong at every step but one.
+ * ═══════════════════════════════════════════════════════════════════════ */
+
+.fbk-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--fbk-s-3, 6px);
+    height: var(--fbk-h-sm, 24px);
+    cursor: pointer;
+    color: rgb(var(--fbk-dim, 138 160 200));
+    font: var(--fbk-t-label, 700 13px/1.25 sans-serif);
+    font-weight: 600;
+    letter-spacing: var(--fbk-t-label-track, 0);
+    user-select: none;
+}
+
+/* The real control stays for the keyboard and the screen reader; only its
+   default rendering goes away. */
+.fbk-toggle input {
+    position: absolute;
+    opacity: 0;
+    width: 0;
+    height: 0;
+}
+
+.fbk-toggle-track {
+    flex: 0 0 auto;
+    position: relative;
+    width: 34px;
+    height: 19px;
+    border-radius: var(--fbk-radius-pill, 999px);
+    background: rgb(var(--fbk-surface-2, 30 34 44));
+    border: var(--fbk-hairline, 1px) solid rgb(var(--fbk-border, 42 46 58));
+    box-shadow: var(--fbk-panel-inner, none);
+    transition: background var(--fbk-motion, 140ms ease),
+                border-color var(--fbk-motion, 140ms ease);
+}
+
+.fbk-toggle-track::after {
+    content: '';
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    width: 13px;
+    height: 13px;
+    border-radius: var(--fbk-radius-pill, 999px);
+    background: rgb(var(--fbk-dim, 138 160 200));
+    transition: transform var(--fbk-motion, 140ms ease),
+                background var(--fbk-motion, 140ms ease);
+}
+
+.fbk-toggle input:checked + .fbk-toggle-track {
+    background: var(--fbk-lit-fill, rgb(var(--fbk-accent, 41 168 255)));
+    border-color: rgb(var(--fbk-accent-hi, 96 194 255));
+    box-shadow: var(--fbk-lit-halo, none);
+}
+
+.fbk-toggle input:checked + .fbk-toggle-track::after {
+    transform: translateX(15px);
+    background: var(--fbk-lit-on, rgb(var(--fbk-on-accent, 5 7 12)));
+}
+
+.fbk-toggle input:focus-visible + .fbk-toggle-track {
+    outline: 2px solid rgb(var(--fbk-focus, 41 168 255));
+    outline-offset: 2px;
+}
+
+.fbk-toggle input:checked ~ .fbk-toggle-text { color: rgb(var(--fbk-text, 232 238 252)); }
+
+/* ═══ 8. Family 4 — STEPPER: a number you nudge ══════════════════════════
+ *
+ * Round, like the player's own rail of circular icon buttons (DESIGN.md §8),
+ * with the value between them at the value step so the number is the thing
+ * you read and the buttons are furniture.
+ * ═══════════════════════════════════════════════════════════════════════ */
+
+.fbk-stepper {
+    display: inline-flex;
+    align-items: center;
+    /* Tight, because − value + is ONE control. The row's gap is for the space
+       between controls; using it here makes three parts read as three. */
+    gap: var(--fbk-s-2, 4px);
+    height: var(--fbk-h-md, 40px);
+}
+
+/*
+ * The value sits in a fixed box so pressing − and + does not shuffle the row
+ * sideways as the number changes width.
+ *
+ * Two widths, because a symbol unit and a word unit need different room and
+ * one compromise value is wrong for both: `85 %` in a 72px box has the
+ * buttons drifting apart, and `4 bars` in a 56px one wraps.
+ */
+.fbk-stepper .fbk-readout {
+    justify-content: center;
+    min-width: 56px;
+}
+
+.fbk-stepper-wide .fbk-readout { min-width: 76px; }
+
+/*
+ * The label and the value, stacked inside the stepper.
+ *
+ * Two steppers side by side with their legends in a separate label column is
+ * two rows plus a guess about which legend belongs to which. Stacked, a
+ * stepper is one object that reads on its own — and it is what lets a label
+ * say `A · ±1 bar`, carrying both what the control is and what one press does.
+ */
+.fbk-stepper-stack {
+    flex: 1 1 auto;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 0;
+}
+
+.fbk-stepper-label {
+    font: var(--fbk-t-field, 600 9px/1.2 sans-serif);
+    letter-spacing: var(--fbk-t-field-track, 0.12em);
+    text-transform: uppercase;
+    white-space: nowrap;
+    color: rgb(var(--fbk-dim, 138 160 200));
+}
+
+/* The value a stepper sets is bigger than a readout in a line of text: you
+   aim at it, and on a rack of steppers it is the thing you came to change. */
+.fbk-stepper-stack .fbk-readout {
+    min-width: 0;
+    font: var(--fbk-t-num-md, 900 18px/1.1 monospace);
+    letter-spacing: var(--fbk-t-num-md-track, 0);
+    text-shadow: var(--fbk-num-glow, none);
+}
+
+/* One stepper on a rack holds the number that drives the drill; the rest are
+   policy. Blue says which — the same blue that means "pressable" everywhere
+   else, used here for "this is the live one". */
+.fbk-stepper-stack .fbk-readout[data-emph="1"] { color: rgb(var(--fbk-accent, 41 168 255)); }
+
+
+/*
+ * A stepper button: a ROUNDED RECT at `h-md`, not a circle at `h-sm`.
+ *
+ * Two reasons, and the second is the one that forced it.
+ *
+ * SEPARATION. A circle is just a pill that happens to be square, so the
+ * stepper and the chip were sharing `radius-pill` — two of the four families
+ * wearing one geometry, which is the §1 mistake in slow motion. A stepper is
+ * a rounded square with a glyph, a chip is a pill with a word in it, a
+ * segmented cell is a cell inside a bordered track. Three shapes, three
+ * questions.
+ *
+ * SIZE. 26px is under WCAG 2.5.8's 24px floor once you count the border, and
+ * nowhere near 2.5.5's 44px — and these are the controls a player nudges
+ * mid-song. `h-md` is 32px on a mouse and **44px on a finger**, because
+ * src/theme.js swaps the whole height scale when the pointer is coarse. Which
+ * is why this is `min-width` and not `width`: at 44px the glyph is still one
+ * character, so the box may be square, but a caller who puts `A` or `12` in
+ * one gets a wider box rather than a clipped one.
+ */
+.fbk-step {
+    flex: 0 0 auto;
+    min-width: var(--fbk-h-md, 40px);
+    height: var(--fbk-h-md, 40px);
+    padding: 0 var(--fbk-s-2, 4px);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    box-sizing: border-box;
+    border-radius: var(--fbk-radius-sm, 8px);
+    border: 0;
+    /*
+     * A RAISED FACE, not another hole.
+     *
+     * They carried a border stroke, and inside a well that is already darker a
+     * stroked box reads as one more recess — so a stepper looked like three
+     * dents in a row instead of a value between two buttons. The design draws
+     * them as the control tone with a top light line and no stroke: light
+     * comes from above and a thing you press catches it, which is the whole
+     * difference between "pressable" and "printed".
+     */
+    background: rgb(var(--fbk-surface-2, 30 34 44));
+    box-shadow: var(--fbk-control-lift, none);
+    color: rgb(var(--fbk-text, 232 238 252));
+    font: var(--fbk-t-label, 700 13px/1.25 sans-serif);
+    /*
+     * 20px and light. A `−` and a `+` are strokes, not letters: at a label's
+     * 13px they read as punctuation, and at a heavy weight they read as
+     * exclamation. Big and thin is what a panel of hardware does.
+     */
+    font-size: 20px;
+    font-weight: 300;
+    letter-spacing: 0;
+    cursor: pointer;
+    transition: background var(--fbk-motion, 140ms ease),
+                border-color var(--fbk-motion, 140ms ease),
+                color var(--fbk-motion, 140ms ease);
+}
+
+.fbk-step:hover:not(:disabled) {
+    background: rgb(var(--fbk-accent, 41 168 255) / 0.3);
+    box-shadow: var(--fbk-control-lift-on, none);
+    color: rgb(var(--fbk-text, 232 238 252));
+}
+
+.fbk-step:active:not(:disabled) { box-shadow: var(--fbk-control-lift-down, none); }
+
+.fbk-step:active:not(:disabled) { background: rgb(var(--fbk-accent, 41 168 255) / 0.3); }
+
+/* ═══ 9. Slider — a HUD gauge that is still an <input type="range"> ══════
+ *
+ * The skin changes; the control does not, because that is the one a keyboard
+ * can operate. Track and thumb have to be declared per engine — there is no
+ * shorthand that covers both — so the two blocks below are the same values
+ * twice on purpose.
+ * ═══════════════════════════════════════════════════════════════════════ */
+
+/*
+ * The value sits next to its label, so the track can have the rest.
+ *
+ * `.fbk-slider-label` drops the label column's fixed width: `CHART` and its
+ * `100 %` have to read as one unit, and a 62px column with a 40px word in it
+ * puts 22px of nothing between them.
+ */
+.fbk-slider-label { flex: 0 0 auto; width: auto; }
+
+.fbk-slider-row .fbk-readout { flex: 0 0 auto; }
+/* With a label the value pairs leftward; without one it trails the track. */
+.fbk-slider-row .fbk-slider-label ~ .fbk-readout { margin-right: var(--fbk-s-3, 6px); }
+
+/*
+ * `min-width: 0`, not 80.
+ *
+ * An 80px floor is a promise the flex row cannot always keep, and inside a
+ * field it stopped the track short of the right edge — reported as "the
+ * difficulty bar does not go all the way". A track that is the flexible child
+ * of a row it is meant to fill has no business having a minimum: the row's
+ * other children are all fixed, so whatever is left IS the track.
+ */
+.fbk-slider {
+    flex: 1 1 auto;
+    min-width: 0;
+    height: var(--fbk-h-md, 40px);
+    appearance: none;
+    -webkit-appearance: none;
+    background: transparent;
+    cursor: pointer;
+}
+
+.fbk-slider::-webkit-slider-runnable-track {
+    /* 8px and unstroked: a 6px hairlined rail is a form control, and this is a
+       gauge you glance at while playing. The stroke went for the same reason
+       the steppers' did — inside a well it bounded a shape the fill bounds. */
+    height: 8px;
+    border-radius: var(--fbk-radius-pill, 999px);
+    /*
+     * The lit part is a GRADIENT on the track, stopped at `--fbk-fill`.
+     *
+     * Chromium has no pseudo-element for the filled side of a range — none —
+     * so a two-stop gradient is the only way both engines show the same
+     * gauge. `slider()` sets the stop on the input; the track inherits it.
+     */
+    background: linear-gradient(to right,
+        var(--fbk-lit-fill, rgb(var(--fbk-accent, 41 168 255))) 0 var(--fbk-fill, 0%),
+        rgb(var(--fbk-surface-2, 30 34 44)) var(--fbk-fill, 0%) 100%);
+    border: 0;
+}
+
+.fbk-slider::-moz-range-track {
+    height: 8px;
+    border-radius: var(--fbk-radius-pill, 999px);
+    /* The same two-stop gradient as WebKit's, so one `--fbk-fill` drives both
+       engines and neither has a special case. */
+    background: linear-gradient(to right,
+        var(--fbk-lit-fill, rgb(var(--fbk-accent, 41 168 255))) 0 var(--fbk-fill, 0%),
+        rgb(var(--fbk-surface-2, 30 34 44)) var(--fbk-fill, 0%) 100%);
+    border: 0;
+}
+
+/* Firefox can paint the filled part; WebKit cannot, so it is the thumb's halo
+   that carries the "this is live" signal there. */
+/* Firefox: the gradient already paints the fill, so its progress element
+   would double it — kept at the track's own tone and height so the shape
+   stays right if a future engine ignores the gradient. */
+.fbk-slider::-moz-range-progress {
+    height: 8px;
+    border-radius: var(--fbk-radius-pill, 999px);
+    background: var(--fbk-lit-fill, rgb(var(--fbk-accent, 41 168 255)));
+}
+
+.fbk-slider::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    /*
+     * 20px with a light ring. 15px on a 6px rail was a bead; 20 on an 8px rail
+     * is a knob. WebKit cannot paint the filled portion of a range, so the
+     * thumb is the only thing carrying "this is live" there — it has to be
+     * findable without hunting.
+     */
+    width: 20px;
+    height: 20px;
+    margin-top: -6px;
+    box-sizing: border-box;
+    border-radius: var(--fbk-radius-pill, 999px);
+    background: var(--fbk-lit-fill, rgb(var(--fbk-accent, 41 168 255)));
+    border: var(--fbk-hairline, 1px) solid rgb(var(--fbk-accent-hi, 96 194 255));
+    box-shadow: var(--fbk-lit-halo, none);
+}
+
+.fbk-slider::-moz-range-thumb {
+    width: 15px;
+    height: 15px;
+    box-sizing: border-box;
+    border-radius: var(--fbk-radius-pill, 999px);
+    background: var(--fbk-lit-fill, rgb(var(--fbk-accent, 41 168 255)));
+    border: var(--fbk-hairline, 1px) solid rgb(var(--fbk-accent-hi, 96 194 255));
+    box-shadow: var(--fbk-lit-halo, none);
+}
+
+/* ═══ 10. Buttons ════════════════════════════════════════════════════════
+ *
+ * Four tiers and no others: primary (one per panel), stop (the primary's
+ * inverse, same slot and size), secondary, quiet. Plus a `-small` modifier
+ * that drops any of them to `h-sm` for a supporting row.
+ * ═══════════════════════════════════════════════════════════════════════ */
+
+.fbk-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--fbk-s-3, 6px);
+    box-sizing: border-box;
+    height: var(--fbk-h-md, 40px);
+    padding: 0 var(--fbk-s-5, 10px);
+    border: var(--fbk-hairline, 1px) solid rgb(var(--fbk-border, 42 46 58));
+    border-radius: var(--fbk-radius-sm, 8px);
+    background: rgb(var(--fbk-surface-2, 30 34 44));
+    /*
+     * A raised face. The controls were completely flat — reported — and a flat
+     * rectangle with a border is a printed label, not something that looks
+     * pressable. A slot rather than a literal, per the second law: a skin that
+     * wants flat sets it to `none`.
+     */
+    box-shadow: var(--fbk-control-lift, none);
+    color: rgb(var(--fbk-text, 232 238 252));
+    font: var(--fbk-t-label, 700 13px/1.25 sans-serif);
+    font-size: 13px;
+    letter-spacing: var(--fbk-t-label-track, 0);
+    cursor: pointer;
+    white-space: nowrap;
+    transition: background var(--fbk-motion, 140ms ease),
+                border-color var(--fbk-motion, 140ms ease);
+}
+
+.fbk-btn:hover:not(:disabled) {
+    background: rgb(var(--fbk-surface, 12 15 22));
+    border-color: rgb(var(--fbk-dim, 138 160 200) / 0.5);
+    box-shadow: var(--fbk-control-lift-on, none);
+}
+
+.fbk-btn:active:not(:disabled) { box-shadow: var(--fbk-control-lift-down, none); }
+
+/*
+ * THE primary. Its devices are all slots, so a glow-less skin gets a solid
+ * fill and a border instead of a glow — and never nothing.
+ */
+/*
+ * Three-part layout, not a huddle.
+ *
+ * A full-width primary carrying a status dot, a label and a key cap centred
+ * all three together with 6px between them, which read as one clot in the
+ * middle of an empty bar. The dot belongs at the leading edge, the cap at the
+ * trailing one, and the label in the middle — hence `.fbk-btn-label`.
+ */
+.fbk-btn-primary,
+.fbk-btn-stop { justify-content: space-between; }
+
+.fbk-btn-label {
+    flex: 1 1 auto;
+    text-align: center;
+}
+
+.fbk-btn-primary {
+    width: 100%;
+    height: var(--fbk-h-lg, 56px);
+    margin: var(--fbk-s-4, 8px) 0 var(--fbk-s-2, 4px);
+    padding: 0 var(--fbk-s-6, 14px);
+    font-size: 14px;
+    font-weight: 800;
+    /* It is the one control you hit without looking, so it is the one that
+       shouts. Uppercase with real tracking reads as a legend on hardware. */
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    background: var(--fbk-emph-fill, rgb(var(--fbk-accent, 41 168 255)));
+    border: var(--fbk-emph-border, none);
+    /* Its own halo AND the raised face — the halo says "this is the one", the
+       lift says "this is a thing you press". They are different claims. */
+    box-shadow: var(--fbk-emph-halo, none), var(--fbk-control-lift, none);
+    color: var(--fbk-emph-on, rgb(var(--fbk-on-accent, 5 7 12)));
+}
+
+/*
+ * THE PRIMARY HAS TO RESTATE ITS FILL ON HOVER.
+ *
+ * `filter: brightness()` alone was not enough, and the reason is arithmetic:
+ * `.fbk-btn:hover:not(:disabled)` is **(0,3,0)** — a class and two
+ * pseudo-classes — while `.fbk-btn-primary` is (0,1,0). So pointing at the
+ * footswitch painted the SECONDARY's hover background over the primary's
+ * gradient, and the label, which is dark ink meant for a bright fill, went
+ * dark-on-dark. Reported as "START DRILL disappears on hover"; that is exactly
+ * what it did.
+ *
+ * A `-primary:hover` rule is (0,3,0) as well and comes later, so restating the
+ * fill wins on order. Raising the base rule's specificity instead would have
+ * made every future variant fight it.
+ */
+.fbk-btn-primary:hover:not(:disabled) {
+    background: var(--fbk-emph-fill, rgb(var(--fbk-accent, 41 168 255)));
+    border: var(--fbk-emph-border, none);
+    filter: brightness(1.08);
+}
+
+.fbk-btn-primary:active:not(:disabled) {
+    background: var(--fbk-emph-fill, rgb(var(--fbk-accent, 41 168 255)));
+    filter: brightness(0.96);
+}
+
+/*
+ * The inverse of the primary: same slot, same size, same WEIGHT, different hue.
+ *
+ * It used to be a wash — the alert colour at low alpha over the panel — which
+ * is how a secondary looks, and next to a solid START it read as disabled.
+ * Reported exactly that way. The two are the same control in two states, so
+ * they have to be the same object: filled, haloed, dark ink. Only the hue
+ * carries the difference, which is the whole of §3.
+ */
+.fbk-btn-stop {
+    width: 100%;
+    height: var(--fbk-h-lg, 56px);
+    margin: var(--fbk-s-4, 8px) 0 var(--fbk-s-2, 4px);
+    padding: 0 var(--fbk-s-6, 14px);
+    font-size: 14px;
+    font-weight: 800;
+    /* It is the one control you hit without looking, so it is the one that
+       shouts. Uppercase with real tracking reads as a legend on hardware. */
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    /*
+     * FILLED, like the primary — because it IS the primary, in its other state.
+     *
+     * It was the alert colour at 0.16 alpha over the panel, which is how a
+     * secondary looks, and next to a solid START it read as disabled.
+     * Reported exactly that way. Start and End are one control in two states,
+     * so they have to be the same object: filled, haloed, dark ink. Only the
+     * hue carries the difference, which is the whole of §3.
+     */
+    background: linear-gradient(180deg,
+        rgb(var(--fbk-alert, 229 72 77)),
+        rgb(var(--fbk-alert, 229 72 77) / 0.82));
+    border: var(--fbk-hairline, 1px) solid rgb(var(--fbk-alert, 229 72 77));
+    box-shadow: 0 0 0 1px rgb(var(--fbk-alert, 229 72 77) / 0.45),
+                0 8px 24px rgb(var(--fbk-alert, 229 72 77) / 0.3),
+                var(--fbk-control-lift, none);
+    /*
+     * WHITE INK, chosen after measuring both.
+     *
+     * On `#E5484D` the panel's text colour is **3.37 : 1** and the well is
+     * 5.15. The threshold that applies is 3.0, because this label is 15px at
+     * weight 800 — WCAG's "large text" — so both are legal and white is the
+     * one that was preferred. Recorded rather than left implicit: the next
+     * person to read this rule should know 3.37 was seen and accepted, not
+     * that nobody looked.
+     *
+     * Note it does NOT generalise to the primary. There the accent is light
+     * enough that white is 2.22:1, which is legal at no size — see the key-cap
+     * note above. Same question, opposite answer, because the fill is a
+     * different brightness.
+     */
+    color: rgb(var(--fbk-text, 232 238 252));
+}
+
+.fbk-btn-stop:hover:not(:disabled) {
+    /* Same (0,3,0) hole as the primary's — a `.fbk-btn:hover` would otherwise
+       paint the secondary's wash over this fill. */
+    background: rgb(var(--fbk-alert, 229 72 77));
+    filter: brightness(1.08);
+}
+
+.fbk-btn-small {
+    height: var(--fbk-h-sm, 24px);
+    padding: 0 var(--fbk-s-4, 8px);
+    font-size: 11px;
+    font-weight: 600;
+}
+
+/*
+ * Quiet. Borderless until you point at it — a text button that never earns a
+ * border is a text button nobody notices, which is what happened to "Clear".
+ */
+.fbk-btn-quiet {
+    background: transparent;
+    border-color: transparent;
+    color: rgb(var(--fbk-dim, 138 160 200));
+    font-weight: 600;
+}
+
+.fbk-btn-quiet:hover:not(:disabled) {
+    background: rgb(var(--fbk-surface-2, 30 34 44));
+    border-color: rgb(var(--fbk-border, 42 46 58));
+    color: rgb(var(--fbk-text, 232 238 252));
+}
+
+/*
+ * ONE disabled treatment, for every control.
+ *
+ * It was per-component before — `opacity: 0.4` here, `filter: saturate(0.4)`
+ * there — and the disabled primary came out a muddy grey-blue that read as
+ * broken rather than as unavailable. One opacity, no halo, no filter.
+ */
+.fbk-btn:disabled,
+.fbk-step:disabled,
+.fbk-chip:disabled,
+.fbk-seg-btn:disabled,
+.fbk-slider:disabled,
+.fbk-toggle input:disabled ~ * {
+    opacity: var(--fbk-disabled-opacity, 0.38);
+    cursor: default;
+    box-shadow: none;
+    filter: none;
+}
+
+/* ═══ 11. Meters — the one shape for measured data (DESIGN.md §3) ════════ */
+
+.fbk-meter {
+    position: relative;
+    flex: 1 1 auto;
+    height: 8px;
+    border-radius: var(--fbk-radius-pill, 999px);
+    background: rgb(var(--fbk-surface-2, 30 34 44));
+    border: var(--fbk-hairline, 1px) solid rgb(var(--fbk-border, 42 46 58) / 0.8);
+    overflow: hidden;
+}
+
+.fbk-meter::after {
+    content: '';
+    position: absolute;
+    inset: 0 auto 0 0;
+    width: var(--fbk-fill, 0%);
+    background: var(--fbk-meter-fill, rgb(var(--fbk-good, 61 220 132)));
+    transition: width var(--fbk-motion, 140ms ease);
+}
+
+.fbk-meter[data-band="good"]::after { background: rgb(var(--fbk-good, 61 220 132)); }
+.fbk-meter[data-band="mid"]::after { background: rgb(var(--fbk-mid, 245 165 36)); }
+.fbk-meter[data-band="bad"]::after { background: rgb(var(--fbk-bad, 229 72 77)); }
+
+/* A clickable row: name, meter, number. Three columns, and the number is
+   tabular and right-aligned so a column of them lines up. */
+.fbk-meter-row {
+    display: flex;
+    align-items: center;
+    gap: var(--fbk-s-4, 8px);
+    width: 100%;
+    box-sizing: border-box;
+    height: var(--fbk-h-sm, 24px);
+    border: 0;
+    border-radius: var(--fbk-radius-sm, 8px);
+    background: transparent;
+    color: inherit;
+    font: var(--fbk-t-label, 700 13px/1.25 sans-serif);
+    font-weight: 600;
+    letter-spacing: var(--fbk-t-label-track, 0);
+    padding: 0 var(--fbk-s-3, 6px);
+    cursor: pointer;
+    text-align: left;
+    transition: background var(--fbk-motion, 140ms ease);
+}
+
+.fbk-meter-row:hover { background: rgb(var(--fbk-surface-2, 30 34 44)); }
+
+.fbk-meter-name {
+    flex: 0 0 88px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.fbk-meter-value {
+    flex: 0 0 34px;
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+    font-weight: 800;
+    color: rgb(var(--fbk-dim, 138 160 200));
+}
+
+/* ═══ 12. Small parts ════════════════════════════════════════════════════ */
+
+/* A caveat, with its sentence in the `title`. Never a box of prose. */
+.fbk-badge {
+    flex: 0 0 auto;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    box-sizing: border-box;
+    width: 20px;
+    height: 20px;
+    border-radius: var(--fbk-radius-pill, 999px);
+    font: var(--fbk-t-micro, 900 10px/1.2 sans-serif);
+    font-size: 11px;
+    letter-spacing: 0;
+    cursor: help;
+    background: rgb(var(--fbk-mid, 245 165 36) / 0.16);
+    border: var(--fbk-hairline, 1px) solid rgb(var(--fbk-mid, 245 165 36) / 0.5);
+    color: rgb(var(--fbk-mid, 245 165 36));
+}
+
+.fbk-badge-bad {
+    background: rgb(var(--fbk-bad, 229 72 77) / 0.16);
+    border-color: rgb(var(--fbk-bad, 229 72 77) / 0.5);
+    color: rgb(var(--fbk-bad, 229 72 77));
+}
+
+/* The state of an input, on the control that needs it. */
+.fbk-dot {
+    flex: 0 0 auto;
+    width: 8px;
+    height: 8px;
+    border-radius: var(--fbk-radius-pill, 999px);
+    background: rgb(var(--fbk-dim, 138 160 200));
+}
+
+.fbk-dot[data-state="ready"] {
+    background: rgb(var(--fbk-good, 61 220 132));
+    box-shadow: 0 0 8px rgb(var(--fbk-good, 61 220 132) / 0.8);
+}
+
+.fbk-dot[data-state="warn"] { background: rgb(var(--fbk-mid, 245 165 36)); }
+.fbk-dot[data-state="off"] { background: rgb(var(--fbk-dim, 138 160 200) / 0.6); }
+
+/*
+ * A key cap. A shortcut nobody can see is a shortcut nobody uses.
+ *
+ * Fixed height rather than padding, so a cap inside a button lines up with the
+ * button's text instead of stretching its row.
+ */
+.fbk-kbd {
+    flex: 0 0 auto;
+    display: inline-flex;
+    align-items: center;
+    box-sizing: border-box;
+    height: 18px;
+    padding: 0 var(--fbk-s-3, 6px);
+    border-radius: var(--fbk-s-2, 4px);
+    border: var(--fbk-hairline, 1px) solid rgb(var(--fbk-border, 42 46 58));
+    background: rgb(var(--fbk-bg, 5 7 12));
+    color: rgb(var(--fbk-dim, 138 160 200));
+    font: var(--fbk-t-micro, 900 10px/1.2 sans-serif);
+    letter-spacing: var(--fbk-t-micro-track, 0.16em);
+    white-space: nowrap;
+}
+
+/*
+ * A key cap on a filled button is INVERTED, not washed.
+ *
+ * It used to be `--fbk-bg / 0.35` with `color: inherit` — a 35% dark wash
+ * under the button's own near-white ink. Measured on the default accent that
+ * plate came out at **1.05 : 1** against the fill, so what reached the screen
+ * was white letters apparently floating in nothing, on a bright ground, at
+ * 10px. Reported as "the D is unreadable", and it was.
+ *
+ * Inverting fixes it in both directions at once: a near-white plate reads
+ * against any hue a button might be filled with, and the panel's own ground
+ * colour as ink reads against the plate at about 18:1. Roles, not device
+ * slots, on purpose — `--fbk-emph-on` is allowed to be `none`, and a `none`
+ * background here would delete the cap.
+ */
+.fbk-btn-primary .fbk-kbd,
+.fbk-btn-stop .fbk-kbd {
+    /*
+     * `text` as the plate and `bg` as the ink — NOT `on-accent`.
+     *
+     * This read `background: on-accent; color: bg`, which was correct while
+     * `on-accent` was near-white. The rack palette makes `on-accent` the WELL,
+     * because the accent is light enough that only dark ink survives on it
+     * (2.22:1 for white against 7.43:1 for the well) — and that turned this cap
+     * into the well on the well: **black on black**, a solid dark square with
+     * an invisible letter, which is what shipped.
+     *
+     * The lesson generalises past this rule: a role that means "ink for X"
+     * cannot be reused as "a plate on X". They are opposite ends of the same
+     * pairing, and one of them changed sides when the palette did.
+     */
+    border-color: rgb(var(--fbk-bg, 5 7 12) / 0.5);
+    background: rgb(var(--fbk-text, 232 238 252));
+    color: rgb(var(--fbk-bg, 5 7 12));
+}
+
+/*
+ * A status dot on a filled button, if a consumer insists.
+ *
+ * DESIGN.md §16 says not to: a hue against a saturated fill is the one signal
+ * that cannot be read, and on an ENABLED primary the dot is always "ready"
+ * anyway, so it carries nothing the button's own state does not. This ring is
+ * here so that a consumer who does it regardless gets a visible dot rather
+ * than a 8px smudge — not as permission.
+ */
+.fbk-btn-primary .fbk-dot,
+.fbk-btn-stop .fbk-dot {
+    box-shadow: 0 0 0 var(--fbk-hairline, 1px) rgb(var(--fbk-bg, 5 7 12) / 0.6);
+}
+
+/*
+ * Why something just FAILED — an event, so it is written imperatively and
+ * clears itself. Why something is BLOCKED is not here: that lives on the
+ * disabled control's own tooltip.
+ */
+.fbk-flash {
+    margin: var(--fbk-s-4, 8px) 0 0;
+    padding: var(--fbk-s-3, 6px) var(--fbk-s-4, 8px);
+    border-radius: var(--fbk-radius-sm, 8px);
+    background: rgb(var(--fbk-mid, 245 165 36) / 0.12);
+    border: var(--fbk-hairline, 1px) solid rgb(var(--fbk-mid, 245 165 36) / 0.4);
+    color: rgb(var(--fbk-text, 232 238 252));
+    font: var(--fbk-t-body, 500 11px/1.45 sans-serif);
+    font-size: 11px;
+}
+
+/* Nothing to show yet. Not an error, so it is quiet. */
+.fbk-empty {
+    margin: var(--fbk-s-4, 8px) 0;
+    color: rgb(var(--fbk-dim, 138 160 200));
+    font: var(--fbk-t-body, 500 11px/1.45 sans-serif);
+    font-size: 12px;
+}
+
+/* ═══ 13. The button the kit puts in the player's control slot ═══════════ */
+
+.fbk-open-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--fbk-s-3, 6px);
+    box-sizing: border-box;
+    height: var(--fbk-h-sm, 24px);
+    padding: 0 var(--fbk-s-4, 8px);
+    border-radius: var(--fbk-radius-sm, 8px);
+    border: var(--fbk-hairline, 1px) solid rgb(var(--fbk-border, 42 46 58));
+    background: rgb(var(--fbk-surface-2, 30 34 44));
+    /*
+     * A raised face. The controls were completely flat — reported — and a flat
+     * rectangle with a border is a printed label, not something that looks
+     * pressable. A slot rather than a literal, per the second law: a skin that
+     * wants flat sets it to `none`.
+     */
+    box-shadow: var(--fbk-control-lift, none);
+    color: rgb(var(--fbk-text, 232 238 252));
+    font: var(--fbk-t-label, 700 13px/1.25 sans-serif);
+    font-size: 13px;
+    letter-spacing: var(--fbk-t-label-track, 0);
+    cursor: pointer;
+    white-space: nowrap;
+    transition: background var(--fbk-motion, 140ms ease),
+                border-color var(--fbk-motion, 140ms ease);
+}
+
+.fbk-open-btn:hover { background: rgb(var(--fbk-surface, 12 15 22)); }
+
+.fbk-open-btn.fbk-on {
+    border-color: rgb(var(--fbk-accent, 41 168 255));
+    background: rgb(var(--fbk-accent, 41 168 255) / 0.16);
+}
+
+.fbk-x {
+    flex: 0 0 auto;
+    width: var(--fbk-h-sm, 24px);
+    height: var(--fbk-h-sm, 24px);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border: 0;
+    border-radius: var(--fbk-radius-pill, 999px);
+    background: transparent;
+    color: rgb(var(--fbk-dim, 138 160 200));
+    font: var(--fbk-t-label, 700 13px/1.25 sans-serif);
+    font-size: 13px;
+    cursor: pointer;
+    transition: background var(--fbk-motion, 140ms ease),
+                color var(--fbk-motion, 140ms ease);
+}
+
+.fbk-x:hover {
+    color: rgb(var(--fbk-text, 232 238 252));
+    background: rgb(var(--fbk-surface-2, 30 34 44));
+}
+
+/* ═══ 15. The rack — chassis, racks, wells ═══════════════════════════════
+ *
+ * The panel is a CHASSIS and each block is a rack bolted into it. Racks are
+ * flat and divided by a 1px stroke, not by air: the space that used to
+ * separate groups is a line now, which is why the space scale got denser when
+ * this arrived and why a rack has no margin of its own.
+ *
+ * A WELL is the opposite gesture — a slot cut INTO the chassis, darker and
+ * rounder than what surrounds it. It means "readout, not control", and the
+ * same shape carries urgency: a message that has to stop you is cut in and
+ * outlined rather than printed on top.
+ * ═══════════════════════════════════════════════════════════════════════ */
+
+.fbk-rack {
+    padding: var(--fbk-s-5, 10px) 0 var(--fbk-s-6, 14px);
+    border-bottom: var(--fbk-hairline, 1px) solid rgb(var(--fbk-border, 42 46 58));
+}
+
+.fbk-rack:first-child { padding-top: var(--fbk-s-3, 6px); }
+.fbk-rack:last-child { border-bottom: 0; padding-bottom: var(--fbk-s-3, 6px); }
+
+.fbk-rack-head {
+    display: flex;
+    align-items: center;
+    gap: var(--fbk-s-3, 6px);
+    min-height: var(--fbk-h-sm, 24px);
+    margin-bottom: var(--fbk-s-4, 8px);
+}
+
+/*
+ * The bullet. It is decoration in the strictest sense — it carries no state —
+ * and it earns its place by being the thing that makes a rack label read as a
+ * hardware legend rather than a heading. If it ever needs to mean something,
+ * it becomes a `.fbk-dot` and this rule goes.
+ */
+.fbk-rack-dot {
+    flex: 0 0 auto;
+    width: 5px;
+    height: 5px;
+    border-radius: var(--fbk-radius-pill, 999px);
+    background: rgb(var(--fbk-accent, 41 168 255));
+}
+
+.fbk-rack-label {
+    flex: 0 0 auto;
+    margin: 0;
+    font: var(--fbk-t-rack, 900 10px/1.2 sans-serif);
+    letter-spacing: var(--fbk-t-rack-track, 0.16em);
+    text-transform: uppercase;
+    color: rgb(var(--fbk-text, 232 238 252));
+}
+
+/*
+ * The rack's own state, in its label's row.
+ *
+ * Mono, because it holds quantities that change while you play, and dim
+ * because it is a readout sitting next to a legend — if it read at the label's
+ * weight the row would have two headings.
+ */
+/* `data-tone="value"` paints the amber the design gives a measured number in
+   a legend — the same amber as a mid grade, because that is what it usually
+   is. Grade colour on a READOUT is fine; §3 forbids it on controls. */
+.fbk-rack-aside[data-tone="value"] { color: rgb(var(--fbk-mid, 245 165 36)); }
+
+.fbk-rack-aside {
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    font: var(--fbk-t-num, 700 11px/1.2 monospace);
+    letter-spacing: var(--fbk-t-num-track, 0.02em);
+    color: rgb(var(--fbk-dim, 138 160 200));
+}
+
+.fbk-rack-aside:empty { flex: 1 1 auto; }
+
+.fbk-rack-header {
+    flex: 0 0 auto;
+    display: flex;
+    align-items: center;
+    gap: var(--fbk-s-3, 6px);
+    margin-left: auto;
+}
+
+.fbk-rack-body {
+    display: flex;
+    flex-direction: column;
+    gap: var(--fbk-s-4, 8px);
+}
+
+/* ── a well ──────────────────────────────────────────────────────────────── */
+
+.fbk-well {
+    box-sizing: border-box;
+    padding: var(--fbk-s-4, 8px) var(--fbk-s-5, 10px);
+    border-radius: var(--fbk-radius-well, 12px);
+    border: var(--fbk-hairline, 1px) solid rgb(var(--fbk-border, 42 46 58) / 0.7);
+    background: rgb(var(--fbk-bg, 5 7 12));
+}
+
+.fbk-well[data-tone="warn"] { border-color: rgb(var(--fbk-mid, 245 165 36) / 0.85); }
+.fbk-well[data-tone="bad"] { border-color: rgb(var(--fbk-bad, 229 72 77) / 0.85); }
+
+/* ═══ 16. The rail — a ladder you read, never press ══════════════════════ */
+
+.fbk-rail {
+    position: relative;
+    display: block;
+    padding: var(--fbk-s-3, 6px) 0 0;
+}
+
+/*
+ * The track, and the fill that says how far up you are.
+ *
+ * `--fbk-fill` is set by `rail.set()` from the current rung's index, so
+ * progress is a length. Counting green dots is the thing a HUD should save
+ * you from.
+ */
+/*
+ * From the first cell's centre to the last, which is half a cell in from each
+ * end — `100% / cells / 2`. Running it to the edges left it sticking out past
+ * the outer dots by exactly that much.
+ */
+/*
+ * A track of CONSTANT length: 10px in from each end, always.
+ *
+ * It used to inset by half a cell, which made the line grow and shrink as the
+ * rung count changed — switching +5 to +2 visibly resized the rail. 10 is half
+ * the widest dot, so the line runs exactly between the outer dots' centres
+ * whatever sits between them.
+ */
+.fbk-rail-line {
+    position: absolute;
+    left: 10px;
+    right: 10px;
+    /*
+     * The dots' own centre line, worked out rather than guessed.
+     *
+     * The dots row is 18px tall and its cells centre their content, so a dot's
+     * centre is at `padding-top + 9`; the line is 2px, so its top is one less
+     * than that. It said `+ 5`, which put every dot three pixels ABOVE the
+     * line it is meant to sit on — reported exactly that way, and invisible to
+     * every test I had, because all of them measure horizontal alignment.
+     */
+    top: calc(var(--fbk-s-3, 6px) + 8px);
+    height: 2px;
+    border-radius: var(--fbk-radius-pill, 999px);
+    background: rgb(var(--fbk-border, 42 46 58));
+}
+
+.fbk-rail-line::after {
+    content: '';
+    position: absolute;
+    inset: 0 auto 0 0;
+    width: var(--fbk-fill, 0%);
+    border-radius: inherit;
+    background: rgb(var(--fbk-good, 61 220 132));
+    transition: width var(--fbk-motion, 140ms ease);
+}
+
+/*
+ * EQUAL CELLS, not `space-between`.
+ *
+ * Both rows were `space-between`, which aligns the first child's LEFT edge and
+ * the last child's RIGHT edge — so the centres only coincide when every child
+ * is the same width. A dot is 12px (18 when it is the current rung) and a mark
+ * is as wide as its text: "80" against "100". The result was numbers drifting
+ * further from their dots along the rail, which is exactly what was reported.
+ *
+ * One cell per rung, each `flex: 1 1 0`, content centred: cell *i* has the same
+ * centre in both rows whatever it contains. Which also means the line has to
+ * run from the FIRST cell's centre to the LAST — half a cell in from each end,
+ * not to the edges — hence `--fbk-cells`, set by `rail.set()`.
+ */
+/*
+ * Both rows are positioning contexts with a height of their own, because their
+ * children are out of flow now and would otherwise collapse them to nothing.
+ */
+.fbk-rail-dots,
+.fbk-rail-marks {
+    position: relative;
+    height: 18px;
+}
+
+.fbk-rail-marks { height: 14px; }
+
+/*
+ * PLACED, not distributed.
+ *
+ * Each dot and each number is absolutely positioned at the same fraction of
+ * the fixed track and pulled back by half its own width, so the two rows agree
+ * by construction. Equal flex cells got them agreeing too, but only while
+ * every cell had content — and thinning the numbers on a dense ladder let the
+ * survivors redistribute and drift off their dots again.
+ */
+.fbk-rail-cell,
+.fbk-rail-marks > * {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    transform: translateX(-50%);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    white-space: nowrap;
+}
+
+/* A dot is a fixed shape, not something that stretches to a share. */
+.fbk-rail-cell > .fbk-rail-dot { flex: 0 0 auto; }
+
+.fbk-rail-marks { margin-top: var(--fbk-s-2, 4px); }
+
+/*
+ * Three states, and each one is a different KIND of mark rather than the same
+ * mark in three hues: cleared is filled green, current is a filled blue disc
+ * with a halo, ahead is an outline. So the rail still reads with no colour at
+ * all — which is what §3's "semantic colour is not enough" asks for.
+ */
+.fbk-rail-dot {
+    box-sizing: border-box;
+    /*
+     * 12px, and the current rung is 18.
+     *
+     * 10px with a 2px border was a speck at arm's length. The rail is the only
+     * thing that says which speed you are climbing at, so "here" has to be
+     * findable without looking for it: 18px filled and haloed against 12px
+     * outlines is a difference you catch in peripheral vision, which is what a
+     * HUD is for.
+     */
+    width: 12px;
+    height: 12px;
+    border-radius: var(--fbk-radius-pill, 999px);
+    border: 2px solid rgb(var(--fbk-accent, 41 168 255) / 0.4);
+    background: rgb(var(--fbk-bg, 5 7 12));
+    transition: width var(--fbk-motion, 140ms ease), height var(--fbk-motion, 140ms ease);
+}
+
+.fbk-rail-dot[data-state="done"] {
+    border-color: rgb(var(--fbk-good, 61 220 132));
+    background: rgb(var(--fbk-good, 61 220 132));
+}
+
+.fbk-rail-dot[data-state="on"] {
+    width: 18px;
+    height: 18px;
+    border-color: rgb(var(--fbk-accent, 41 168 255));
+    background: rgb(var(--fbk-accent, 41 168 255));
+    box-shadow: var(--fbk-lit-halo, none);
+}
+
+.fbk-rail-dot[data-state="next"] { border-color: rgb(var(--fbk-accent, 41 168 255) / 0.55); }
+
+/*
+ * A dense ladder shrinks its dots rather than dropping any.
+ *
+ * A step of +2 is 21 rungs, and 21 dots at 10px in 330px touch. Every rung is
+ * real — the shape of the climb is the information — so the marks thin out
+ * (see `rail.set`) and the dots get smaller instead.
+ */
+.fbk-rail[data-dense="true"] .fbk-rail-dot { width: 7px; height: 7px; border-width: 1px; }
+.fbk-rail[data-dense="true"] .fbk-rail-dot[data-state="on"] { width: 11px; height: 11px; border-width: 2px; }
+/*
+ * WITHDRAWN: `.fbk-rail-mark:empty { width: 0 }`.
+ *
+ * It collapsed the unlabelled marks so the survivors could spread out — which
+ * is exactly what put every remaining number off its dot on a +2 ladder. With
+ * marks placed rather than distributed there is nothing to collapse: an empty
+ * one occupies no space anyway and steals none from its neighbours.
+ */
+
+.fbk-rail-mark {
+    font: var(--fbk-t-num, 700 11px/1.2 monospace);
+    letter-spacing: var(--fbk-t-num-track, 0.02em);
+    color: rgb(var(--fbk-dim, 138 160 200) / 0.75);
+}
+
+.fbk-rail-mark[data-state="done"] { color: rgb(var(--fbk-good, 61 220 132)); }
+
+/* The rung you are ON is the one number on the rail you read while playing. */
+.fbk-rail-mark[data-state="on"] {
+    color: rgb(var(--fbk-accent, 41 168 255));
+    text-shadow: var(--fbk-num-glow, none);
+}
+
+/* ═══ 17. The LED meter — a grade that is honest about being discrete ════ */
+
+.fbk-led {
+    display: flex;
+    flex: 1 1 auto;
+    min-width: 0;
+    gap: 2px;
+    height: 8px;
+}
+
+/*
+ * A LIT cell carries its band as its COLOUR and fills itself from it.
+ *
+ * Setting `color` and filling with `currentColor` lets the glow be ONE slot
+ * for all three bands instead of three literals — see the note beside
+ * `led-glow` in theme.js. An unlit cell has no colour, so it has no glow, by
+ * construction rather than by a fourth rule.
+ */
+.fbk-led-cell {
+    flex: 1 1 0;
+    min-width: 0;
+    border-radius: 2px;
+    background: rgb(var(--fbk-border, 42 46 58) / 0.55);
+}
+
+.fbk-led-cell[data-band] {
+    background: currentColor;
+    box-shadow: var(--fbk-led-glow, none);
+}
+
+.fbk-led-cell[data-band="good"] { color: rgb(var(--fbk-good, 61 220 132)); }
+.fbk-led-cell[data-band="mid"] { color: rgb(var(--fbk-mid, 245 165 36)); }
+.fbk-led-cell[data-band="bad"] { color: rgb(var(--fbk-bad, 229 72 77)); }
+
+/* ═══ 18. The status line — chrome that scales with urgency ══════════════ */
+
+.fbk-status {
+    display: flex;
+    align-items: center;
+    gap: var(--fbk-s-3, 6px);
+    min-height: var(--fbk-h-sm, 24px);
+    font: var(--fbk-t-body, 500 11px/1.45 sans-serif);
+    color: rgb(var(--fbk-dim, 138 160 200));
+}
+
+/* `blocked` is the one that gets furniture: a well, and an amber stroke. */
+.fbk-status[data-state="blocked"],
+.fbk-status[data-state="warn"] {
+    box-sizing: border-box;
+    padding: var(--fbk-s-3, 6px) var(--fbk-s-4, 8px);
+    border-radius: var(--fbk-radius-well, 12px);
+    border: var(--fbk-hairline, 1px) solid rgb(var(--fbk-mid, 245 165 36) / 0.85);
+    background: rgb(var(--fbk-bg, 5 7 12));
+    color: rgb(var(--fbk-text, 232 238 252));
+    font-weight: 700;
+}
+
+.fbk-status-dot {
+    flex: 0 0 auto;
+    width: 6px;
+    height: 6px;
+    border-radius: var(--fbk-radius-pill, 999px);
+    background: rgb(var(--fbk-dim, 138 160 200));
+}
+
+.fbk-status[data-state="ok"] .fbk-status-dot { background: rgb(var(--fbk-good, 61 220 132)); }
+.fbk-status[data-state="warn"] .fbk-status-dot,
+.fbk-status[data-state="blocked"] .fbk-status-dot { background: rgb(var(--fbk-mid, 245 165 36)); }
+
+.fbk-status-text { flex: 1 1 auto; min-width: 0; }
+
+/* The way out of a blocked state, in reach of the sentence that describes it. */
+.fbk-status-action {
+    flex: 0 0 auto;
+    padding: 0;
+    border: 0;
+    background: none;
+    cursor: pointer;
+    font: var(--fbk-t-label, 700 13px/1.25 sans-serif);
+    font-size: 11px;
+    color: rgb(var(--fbk-accent, 41 168 255));
+}
+
+.fbk-status-action:hover { color: rgb(var(--fbk-accent-hi, 96 194 255)); }
+
+/* ═══ 19. The list row ═══════════════════════════════════════════════════ */
+
+.fbk-list-row {
+    display: flex;
+    align-items: center;
+    gap: var(--fbk-s-4, 8px);
+    box-sizing: border-box;
+    width: 100%;
+    min-height: var(--fbk-h-md, 40px);
+    padding: 0 var(--fbk-s-3, 6px);
+    border: 0;
+    border-radius: var(--fbk-radius-sm, 8px);
+    background: none;
+    text-align: left;
+    color: inherit;
+    cursor: pointer;
+    transition: background var(--fbk-motion, 140ms ease);
+}
+
+.fbk-list-row:hover { background: rgb(var(--fbk-surface-2, 30 34 44) / 0.6); }
+
+.fbk-list-row:focus-visible {
+    outline: 2px solid rgb(var(--fbk-focus, 41 168 255));
+    outline-offset: -2px;
+}
+
+.fbk-list-name {
+    flex: 0 0 auto;
+    width: 68px;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    font: var(--fbk-t-label, 700 13px/1.25 sans-serif);
+    font-size: 12px;
+}
+
+.fbk-list-value {
+    flex: 0 0 auto;
+    min-width: 34px;
+    text-align: right;
+    font: var(--fbk-t-num, 700 11px/1.2 monospace);
+    letter-spacing: var(--fbk-t-num-track, 0.02em);
+    color: rgb(var(--fbk-dim, 138 160 200));
+}
+
+.fbk-list-chev {
+    flex: 0 0 auto;
+    width: 10px;
+    text-align: center;
+    font-size: 14px;
+    line-height: 1;
+    color: rgb(var(--fbk-dim, 138 160 200) / 0.6);
+}
+
+.fbk-list-row:hover .fbk-list-chev { color: rgb(var(--fbk-text, 232 238 252)); }
+
+/* ═══ 20. The range strip — the only loop selector ═══════════════════════
+ *
+ * Blocks stay PROPORTIONAL to the song, because the strip is a map. The hit
+ * table is built separately in JS so a thin block is still reachable (§12) and
+ * an empty one is drawn but unclickable — truthful about the shape, refusing
+ * to let you land where nothing can happen.
+ * ═══════════════════════════════════════════════════════════════════════ */
+
+/*
+ * THE TRACK, and the row it sits in is taller than it is.
+ *
+ * The bracket frame stands `s-4` proud of the blocks top and bottom — that is
+ * what makes it read as a frame OVER the map rather than another block on it —
+ * so the row reserves the overhang as margin. Sixteen pixels is the whole cost
+ * of the new edges, and it buys the one thing the old tabs could not have: the
+ * selection and the blocks are different kinds of object.
+ */
+.fbk-strip {
+    position: relative;
+    box-sizing: border-box;
+    /*
+     * `h-md` for the blocks plus `s-2` of inner air, and it is a WELL — the
+     * strip is one object, like a stepper, not a bare band of colour.
+     *
+     * The frame stands `s-4` proud top and bottom, so the row reserves that as
+     * margin: sixteen pixels is the whole cost of the new edges, and it buys
+     * the thing the old tabs could not, which is that the selection and the
+     * blocks are different kinds of object.
+     *
+     * These declarations used to be split across two `.fbk-strip` rules in two
+     * sections, both setting `height`. That is the drift trap this file has
+     * already been bitten by twice; there is one rule now.
+     */
+    /*
+     * THE CASE IS TALLER THAN THE ZONES, and that is the whole point.
+     *
+     * `s-2` of the dark ground above and below an `h-md` row of zones — which
+     * is where the bracket corners and the two letters sit. `s-4` was the
+     * first try and it was too much: half the strip's height was ground, and
+     * a selector reads as a map, not as a mount.
+     *
+     * The height is the two of them added up rather than a step off the
+     * height scale, because that is what it IS: change the air and the case
+     * follows, where `h-lg` would have quietly stopped matching.
+     *
+     * Before either, the case was the zones' own height and the frame stood
+     * proud of the box into the row's MARGIN — so the letters left the case
+     * and read as escaping the card, worst of all at the two ends.
+     *
+     * Nothing overhangs now, so the margin that used to reserve the overhang
+     * is gone with it — the rack's own gap spaces this row from its
+     * neighbours, and a margin left behind for a mechanism that no longer
+     * exists is how two of the last three layout bugs here happened.
+     */
+    height: calc(var(--fbk-h-md, 40px) + 2 * var(--fbk-s-2, 4px));
+    border: var(--fbk-hairline, 1px) solid rgb(var(--fbk-border, 42 46 58));
+    border-radius: var(--fbk-radius-well, 12px);
+    background: rgb(var(--fbk-bg, 5 7 12));
+    cursor: pointer;
+    touch-action: none;             /* the drag is ours, not the browser's */
+    user-select: none;
+}
+
+/*
+ * THE TRACK — the timeline itself, inset from the case at both ends.
+ *
+ * The air is what the brackets stand in at bar one and at the last bar; see the
+ * note on `rangeStrip`'s `track` for why this cannot be padding on the strip.
+ * Time zero is this box's left edge, and `rect()` measures it, so a drag, a
+ * snap and a hit all agree about where the song starts.
+ */
+.fbk-strip-track {
+    position: absolute;
+    /*
+     * Inset on all four sides, but NOT by the same amount.
+     *
+     * The vertical air is where a bracket's corners and its letter go, and
+     * `s-2` is enough for that — at `s-4` half the strip's height was ground.
+     * The horizontal air is doing a different job: it is the room a letter
+     * centred on a rail at bar one needs in order not to touch the case, and
+     * halving that is what would put it back on the edge. Two jobs, two
+     * values.
+     */
+    inset: var(--fbk-s-2, 4px) var(--fbk-s-4, 8px);
+    border-radius: var(--fbk-radius-seg, 5px);
+}
+
+.fbk-strip-blocks { position: absolute; inset: 0; overflow: hidden; border-radius: inherit; }
+
+/*
+ * A block, and the state that matters most: NOT YET PLAYED.
+ *
+ * Grey rather than invisible. An earlier version painted the unplayed state at
+ * `border / 0.55`, which measured 1.33:1 against the track — so on a
+ * ten-section song the picker rendered as two coloured smears with eight
+ * invisible gaps, a map that only appeared once you had practised everything.
+ * Accuracy is the block's HUE, never the reason it is visible.
+ */
+.fbk-strip-block {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    box-sizing: border-box;
+    /*
+     * THE GAP IS A TRANSPARENT BORDER, so the box the pointer and the layout
+     * see is still the zone's true extent — only the paint shrinks. It
+     * replaced a hairline separator, which drew a line BETWEEN neighbours and
+     * left the row reading as one hatched bar; the width comes from JS,
+     * because how much air a zone can spare depends on how wide it is.
+     */
+    border-inline: var(--fbk-block-gap, 0px) solid transparent;
+    /*
+     * The corner is capped by the zone's own painted width — `min` of the
+     * design's radius and a third of the paint. A radius is only a corner
+     * while it is small against the side it rounds; at 5px on a three-pixel
+     * bar it saturates and the zone reads as a lozenge.
+     */
+    border-radius: min(var(--fbk-radius-seg, 5px), var(--fbk-block-radius, 5px));
+    /*
+     * LONGHANDS, and that is not a style preference.
+     *
+     * `background:` is a shorthand, so it resets `background-clip` to
+     * `border-box` — and it sat BELOW the clip in this rule, which meant the
+     * transparent border painted through and the gap between zones was never
+     * drawn at all. The property was being set correctly the whole time; I had
+     * verified the input and not the paint. Every band rule below would have
+     * reset it again anyway.
+     */
+    background-color: rgb(var(--fbk-border, 42 46 58));
+    background-clip: padding-box;
+}
+
+.fbk-strip-block[data-band="good"] { background-color: rgb(var(--fbk-good, 61 220 132)); }
+.fbk-strip-block[data-band="mid"] { background-color: rgb(var(--fbk-mid, 245 165 36)); }
+.fbk-strip-block[data-band="bad"] { background-color: rgb(var(--fbk-bad, 229 72 77)); }
+
+/*
+ * Nothing in it — a Noguitar marker, usually. Hatched rather than merely
+ * faint, because faint is what "unmeasured" already means one rule above and
+ * these are two different nothings.
+ */
+.fbk-strip-block[data-empty="true"] {
+    background-color: transparent;
+    background-image: repeating-linear-gradient(135deg,
+        rgb(var(--fbk-border, 42 46 58) / 0.5) 0 3px,
+        rgb(var(--fbk-bg, 5 7 12) / 0) 3px 6px);
+    cursor: default;
+}
+
+/*
+ * TIME NO ZONE COVERS — a count-in, a tail, a stretch the chart says nothing
+ * about — marked, and marked DIFFERENTLY.
+ *
+ * It used to be bare ground, which read as a hole in the map rather than as a
+ * part of the song: reported as looking strange. But it is not the same
+ * nothing as a zone with no notes in it: that zone EXISTS and is empty, and it
+ * gets the hatch. This is where the chart has nothing to say at all, so it
+ * gets the quieter mark — a rule through the middle, saying time passes here
+ * and there is nothing to play.
+ */
+.fbk-strip-block[data-kind="gap"] {
+    background-color: transparent;
+    background-image: linear-gradient(rgb(var(--fbk-border, 42 46 58) / 0.7),
+                                      rgb(var(--fbk-border, 42 46 58) / 0.7));
+    background-repeat: no-repeat;
+    background-position: center;
+    background-size: 100% var(--fbk-hairline, 1px);
+    border-radius: 0;
+    cursor: default;
+}
+
+.fbk-strip-block:hover { filter: brightness(1.3); }
+.fbk-strip-block[data-empty="true"]:hover { filter: none; }
+
+/* Graduated a drill. A tick would not fit in 40px of height next to nine
+   others, so it is a top edge. */
+.fbk-strip-block-done { box-shadow: inset 0 2px 0 0 rgb(var(--fbk-good, 61 220 132)); }
+
+/*
+ * THE PLAYHEAD — a straight line at an instant.
+ *
+ * It was `inset 2px 0 0 0` on whichever BLOCK held the playhead, so it took
+ * that block's corner radius and could only ever sit where a block began: a
+ * curved mark that jumped from zone to zone. Reported as both.
+ *
+ * Square corners, one hairline wide, as tall as the zones it crosses, and
+ * placed at a fraction of the track — so it goes exactly where the time is and
+ * nowhere else. No transition: it is driven from a frame loop, and easing a
+ * value that is already smooth only makes it late.
+ */
+.fbk-strip-head {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    width: var(--fbk-hairline, 1px);
+    margin-left: calc(-0.5 * var(--fbk-hairline, 1px));
+    border-radius: 0;
+    background: rgb(var(--fbk-text, 232 238 252));
+    pointer-events: none;
+}
+
+/*
+ * THE SELECTION IS A FRAME, and it stands proud of the strip.
+ *
+ * `pointer-events: none` on the box itself matters — it lies over the blocks
+ * and a tap has to reach what is underneath — but the brackets inside it are
+ * interactive again.
+ */
+.fbk-strip-sel {
+    position: absolute;
+    /*
+     * It fills the case's interior exactly — `s-2` proud of the zone row at
+     * top and bottom, which is the air the case carries.
+     *
+     * AND IT HAS NO OUTLINE. Two blue lines running the selection's whole
+     * length said the same thing the brackets already say, twice, and drew a
+     * box around blocks that are themselves boxes. The start and the end are
+     * enough: two rails and a tick turning inward at each corner. Reported
+     * exactly that way, and it is §18 — one signal per boundary.
+     */
+    top: calc(-1 * var(--fbk-s-2, 4px));
+    bottom: calc(-1 * var(--fbk-s-2, 4px));
+    box-sizing: border-box;
+    pointer-events: none;
+}
+
+/*
+ * A BRACKET: an invisible column you drag, with a visible mark down its middle.
+ *
+ * The column is `h-md` — 40 at a desk, 48 under a finger — centred ON the edge
+ * rather than hung outside it. The mockup asked for 44, which is the single
+ * number the web uses when it has to pick one for both; the height scale
+ * already answers the question twice and adapts, so it wins here (DESIGN.md
+ * §17). Centred is what lets the mark sit exactly where the edge is: the old
+ * tabs sat beside the selection, which is why two of them on a four-pixel loop
+ * read as one object.
+ */
+.fbk-strip-handle {
+    position: absolute;
+    /*
+     * Flush with the FRAME, which already carries the overhang — the bracket
+     * is part of the frame, not a second thing standing proud of it. Outsetting
+     * again here made the column and its letter sixteen pixels taller than the
+     * box they belong to.
+     */
+    top: 0;
+    bottom: 0;
+    width: var(--fbk-h-md, 40px);
+    padding: 0;
+    border: 0;
+    background: none;
+    cursor: ew-resize;
+    pointer-events: auto;
+    touch-action: none;
+}
+
+.fbk-strip-handle[data-edge="start"] { left: 0; transform: translateX(-50%); }
+.fbk-strip-handle[data-edge="end"] { right: 0; transform: translateX(50%); }
+
+/* The mark: a rail down the edge with a tick turning inward at each corner. */
+.fbk-strip-bracket {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 3px;
+    border-radius: var(--fbk-radius-pill, 999px);
+    background: rgb(var(--fbk-accent, 41 168 255));
+    transition: background var(--fbk-motion, 140ms ease);
+}
+
+.fbk-strip-bracket::before,
+.fbk-strip-bracket::after {
+    content: '';
+    position: absolute;
+    width: 8px;
+    height: 3px;
+    background: inherit;
+    border-radius: inherit;
+}
+
+.fbk-strip-bracket::before { top: 0; }
+.fbk-strip-bracket::after { bottom: 0; }
+
+/* Which way "inward" is, is the only thing that differs between the two. */
+.fbk-strip-handle[data-edge="start"] .fbk-strip-bracket::before,
+.fbk-strip-handle[data-edge="start"] .fbk-strip-bracket::after { left: 0; }
+
+.fbk-strip-handle[data-edge="end"] .fbk-strip-bracket::before,
+.fbk-strip-handle[data-edge="end"] .fbk-strip-bracket::after { right: 0; }
+
+/*
+ * The letter, small and CENTRED ON ITS OWN RAIL.
+ *
+ * Small because the steppers underneath carry the big A and B — up here it
+ * only says which bracket your finger is on.
+ *
+ * Anchored inward first, which sounds safer and is not: two 10px letters
+ * inside the selection need 22px of selection, and a section on a five-minute
+ * song is eight to twenty-two, so they were hidden essentially always. On the
+ * rail they collide only when the selection is thinner than one letter, and
+ * they cannot leave the case either — the rail is already `s-4` inside it
+ * HORIZONTALLY, and a letter centred there overhangs by half its width into
+ * air that is wider than that. Which is why the horizontal inset did not
+ * halve along with the vertical one when the case's air came down.
+ *
+ * Which is also what retired the rule that used to flip the handles at the
+ * ends of the song to keep them out of the scroll container's clip.
+ */
+.fbk-strip-tag {
+    position: absolute;
+    top: 0;
+    /*
+     * As small as a letter can be and still be a letter — 10px of box for a
+     * 9px glyph. It is not decoration to shrink: at 12px plus 2px of padding
+     * the PAIR needed 34px of selection, and a section on a five-minute song
+     * is twenty, so on this song the letters were hidden almost always. Small
+     * is what keeps them.
+     */
+    min-width: 10px;
+    padding: 0 1px;
+    border-radius: 3px;
+    background: rgb(var(--fbk-accent, 41 168 255));
+    color: rgb(var(--fbk-on-accent, 5 7 12));
+    font: var(--fbk-t-field, 600 9px/1.2 sans-serif);
+    letter-spacing: 0;
+    text-align: center;
+}
+
+/* Centred on the rail — the handle is already centred on the edge. */
+.fbk-strip-tag {
+    left: 50%;
+    transform: translateX(-50%);
+}
+
+/*
+ * NO LETTERS ON A NARROW SELECTION.
+ *
+ * Both tags are anchored inward, so on a one-bar loop on a five-minute song
+ * they are anchored into the same twelve pixels and draw over each other — the
+ * narrow case is the common one here, not the edge one.
+ *
+ * They are the right thing to drop: the rails and their inward ticks still say
+ * where the two edges are, and the steppers underneath carry the big A and B.
+ * The letter up here only ever said which bracket your finger was on, and with
+ * the selection this thin there is only one place a finger can be.
+ */
+.fbk-strip-sel[data-narrow="true"] .fbk-strip-tag { display: none; }
+
+.fbk-strip-handle:hover .fbk-strip-bracket,
+.fbk-strip-handle:focus-visible .fbk-strip-bracket {
+    background: rgb(var(--fbk-accent-hi, 96 194 255));
+    box-shadow: var(--fbk-lit-halo, none);
+}
+
+.fbk-strip-handle:focus-visible {
+    outline: 2px solid rgb(var(--fbk-focus, 41 168 255));
+    outline-offset: 2px;
+    border-radius: var(--fbk-radius-sm, 8px);
+}
+
+/* ═══ 21. The folded strip — the panel at reading size ═══════════════ */
+
+/*
+ * The folded state's slot.
+ *
+ * The chassis is SHARED — same panel, same shadow, same corner — so a folded
+ * panel is the same object at a different size rather than a second widget
+ * with its own everything. The slot only has to undo the body's padding,
+ * because at this size the strip IS the panel.
+ */
+.fbk-folded-slot { padding: var(--fbk-s-3, 6px); }
+
+/* Folded, the chassis stops being a tall scrolling box. */
+.fbk-panel[data-folded="true"] {
+    max-height: none;
+    overflow: visible;
+}
+
+/* Inside the panel the strip drops the chrome the chassis already provides —
+   one signal per boundary (§18), one level down. */
+.fbk-folded-slot .fbk-folded {
+    border: 0;
+    background: none;
+}
+
+.fbk-folded {
+    position: relative;
+    /*
+     * A GRID, and the shape is the design's: the footswitch shares its line
+     * with the live number and the rail, and the row of facts runs the full
+     * width underneath it. As a flex row the pedal sat centred across both and
+     * pushed the lower row out of the corner.
+     */
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas: "main switch" "foot foot";
+    column-gap: var(--fbk-s-4, 8px);
+    row-gap: var(--fbk-s-3, 6px);
+    align-items: start;
+    box-sizing: border-box;
+    width: 100%;
+    /*
+     * A LANE ALONG THE TOP, and it is structural.
+     *
+     * The grip and the key hint live in it and nothing else ever does, which
+     * is the whole reason the hint stopped landing on top of the facts. The
+     * hint's own box is 16px, so the lane is the next step up the scale —
+     * reserved always, so revealing it shifts nothing, and with two pixels of
+     * air rather than sitting flush against the first row.
+     */
+    padding: var(--fbk-s-7, 18px) var(--fbk-s-4, 8px) var(--fbk-s-4, 8px);
+    border-radius: var(--fbk-radius, 14px);
+    border: var(--fbk-hairline, 1px) solid rgb(var(--fbk-border, 42 46 58));
+    background: linear-gradient(180deg,
+        rgb(var(--fbk-surface, 12 15 22)),
+        rgb(var(--fbk-bg, 5 7 12)));
+    color: rgb(var(--fbk-text, 232 238 252));
+    text-align: left;
+    transition: border-color var(--fbk-motion, 140ms ease),
+                box-shadow var(--fbk-motion, 140ms ease);
+}
+
+/*
+ * THE FULL-AREA TARGET, stretched behind everything.
+ *
+ * The block used to BE the button, which is honest markup and a hard ceiling:
+ * a button cannot contain a button, so the strip could carry exactly one
+ * action. It needs two — open, and the way out. So the target is a layer
+ * instead, and the readouts above it pass their clicks straight through.
+ */
+.fbk-folded-hit {
+    position: absolute;
+    inset: 0;
+    z-index: 0;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    border-radius: inherit;
+    background: none;
+    cursor: pointer;
+    -webkit-appearance: none;
+    appearance: none;
+}
+
+.fbk-folded-hit:focus-visible { outline: none; }
+
+/*
+ * The affordance appears when you look for it.
+ *
+ * Hover and focus turn the stroke accent and light the edge, and the grip
+ * swaps itself for the key hint. A permanent chevron would be a thing to aim
+ * at, and aiming is the gesture this control exists to avoid.
+ */
+.fbk-folded:hover,
+.fbk-folded:has(.fbk-folded-hit:focus-visible) {
+    border-color: rgb(var(--fbk-accent, 41 168 255));
+    box-shadow: var(--fbk-edge-glow, none);
+}
+
+/* The readouts float above the target and never intercept a click. */
+.fbk-folded-grip,
+.fbk-folded-cue,
+.fbk-folded-body {
+    position: relative;
+    z-index: 1;
+    pointer-events: none;
+}
+
+.fbk-folded-grip {
+    position: absolute;
+    top: 6px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 34px;
+    height: 3px;
+    border-radius: var(--fbk-radius-pill, 999px);
+    background: rgb(var(--fbk-border, 42 46 58));
+    transition: opacity var(--fbk-motion, 140ms ease);
+}
+
+/*
+ * THE HANDLE LABELS ITSELF.
+ *
+ * The hint was pinned bottom-right, over the row of facts — two texts in the
+ * same sixty pixels, reported as unreadable. It sits in the lane now, in the
+ * grip's own place, and the two cross-fade: same spot, same meaning, and one
+ * of them is always fully drawn on the panel's own ground.
+ */
+.fbk-folded-cue {
+    position: absolute;
+    top: 1px;
+    left: 50%;
+    transform: translateX(-50%);
+    padding: 1px var(--fbk-s-4, 8px);
+    border-radius: var(--fbk-radius-pill, 999px);
+    background: rgb(var(--fbk-surface-2, 30 34 44));
+    border: var(--fbk-hairline, 1px) solid rgb(var(--fbk-accent, 41 168 255) / 0.55);
+    opacity: 0;
+    font: var(--fbk-t-rack, 900 10px/1.2 sans-serif);
+    letter-spacing: var(--fbk-t-rack-track, 0.16em);
+    color: rgb(var(--fbk-accent, 41 168 255));
+    white-space: nowrap;
+    transition: opacity var(--fbk-motion, 140ms ease);
+}
+
+.fbk-folded:hover .fbk-folded-cue,
+.fbk-folded:has(.fbk-folded-hit:focus-visible) .fbk-folded-cue { opacity: 1; }
+
+.fbk-folded:hover .fbk-folded-grip,
+.fbk-folded:has(.fbk-folded-hit:focus-visible) .fbk-folded-grip { opacity: 0; }
+
+.fbk-folded-body {
+    grid-area: main;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: var(--fbk-s-3, 6px);
+}
+
+/* The full-width row, running underneath the footswitch. */
+.fbk-folded-foot {
+    grid-area: foot;
+    min-width: 0;
+    display: block;
+}
+
+.fbk-folded-foot:empty { display: none; }
+
+/*
+ * THE WAY OUT — a footswitch, square and centred.
+ *
+ * It was a full-height column, which read as a scrollbar or a divider and, next
+ * to a hover-revealed OPEN, looked like half of a pair it is not: reported as
+ * the two conflicting. A square you stamp on is the shape this action has on
+ * real gear, and it settles that by being a different KIND of object from the
+ * handle beside it — one is a lid you lift, one is a pedal you hit.
+ *
+ * FILLED, and by the same argument as END DRILL in the footer: an alert wash
+ * next to a solid readout reads as disabled. White ink over the fill, which is
+ * the choice made for the footer's stop and kept for the same reason.
+ */
+.fbk-folded-end {
+    position: relative;
+    z-index: 2;
+    pointer-events: auto;
+    grid-area: switch;
+    align-self: center;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: var(--fbk-s-2, 4px);
+    /* Square, on the height scale — `h-lg` is the footswitch size, and it
+       grows to 64 on a touch pointer where a 40px pedal is a miss. */
+    width: var(--fbk-h-lg, 56px);
+    height: var(--fbk-h-lg, 56px);
+    padding: 0;
+    border-radius: var(--fbk-radius-switch, 10px);
+    border: var(--fbk-hairline, 1px) solid rgb(var(--fbk-alert, 229 72 77));
+    background: linear-gradient(180deg,
+        rgb(var(--fbk-alert, 229 72 77)),
+        rgb(var(--fbk-alert, 229 72 77) / 0.82));
+    box-shadow: 0 0 0 1px rgb(var(--fbk-alert, 229 72 77) / 0.45),
+                0 8px 24px rgb(var(--fbk-alert, 229 72 77) / 0.3),
+                var(--fbk-control-lift, none);
+    color: rgb(var(--fbk-text, 232 238 252));
+    cursor: pointer;
+    transition: filter var(--fbk-motion, 140ms ease);
+}
+
+.fbk-folded-end:hover { filter: brightness(1.1); }
+.fbk-folded-end:active { box-shadow: var(--fbk-control-lift-down, none); }
+
+/* The stop glyph, drawn rather than typed — see the note on the builder. */
+.fbk-folded-end-icon {
+    width: 12px;
+    height: 12px;
+    border-radius: 2px;
+    background: currentColor;
+}
+
+.fbk-folded-end-cap {
+    font: var(--fbk-t-rack, 900 10px/1.2 sans-serif);
+    letter-spacing: var(--fbk-t-rack-track, 0.16em);
+    text-transform: uppercase;
+}
+
+/* The one big live number. */
+.fbk-live-value {
+    font: var(--fbk-t-num-xl, 900 28px/1 monospace);
+    letter-spacing: var(--fbk-t-num-xl-track, -0.01em);
+    color: rgb(var(--fbk-good, 61 220 132));
+    /* Backlit, and the glow follows the band because it follows the colour. */
+    text-shadow: var(--fbk-num-glow, none);
+}
+
+.fbk-live-value[data-band="mid"] { color: rgb(var(--fbk-mid, 245 165 36)); }
+.fbk-live-value[data-band="bad"] { color: rgb(var(--fbk-bad, 229 72 77)); }
+.fbk-live-value[data-band="none"] { color: rgb(var(--fbk-dim, 138 160 200)); }
+
+.fbk-live-unit {
+    font: var(--fbk-t-num, 700 11px/1.2 monospace);
+    letter-spacing: var(--fbk-t-num-track, 0.02em);
+}
+
+/* ═══ 22. The field — a labelled well, the rack's actual building block ══
+ *
+ * Getting this wrong is what made a first attempt at the rack design look
+ * nothing like it. The rows had the right controls in the right order and sat
+ * on FLAT ground: label outside on the left, control to its right, no boundary
+ * anywhere. What the design does is put **every control group in a well with
+ * its own label inside** — so a rack reads as four objects bolted to a chassis
+ * rather than four lines of a form.
+ *
+ * The label goes inside for a reason beyond looks: a label in an external
+ * column shares one fixed width with every other label in the panel, so
+ * `DIFFICULTY` forces `STEP` to start 40px further right than it needs to.
+ * Inside its own well each label takes the room it needs, and the wells still
+ * line up — because the WELLS are the thing being aligned.
+ * ═══════════════════════════════════════════════════════════════════════ */
+
+.fbk-field {
+    display: flex;
+    align-items: center;
+    gap: var(--fbk-s-4, 8px);
+    box-sizing: border-box;
+    min-height: var(--fbk-h-md, 40px);
+    padding: var(--fbk-s-1, 2px) var(--fbk-s-5, 10px);
+    border-radius: var(--fbk-radius-well, 12px);
+    border: var(--fbk-hairline, 1px) solid rgb(var(--fbk-border, 42 46 58));
+    background: rgb(var(--fbk-bg, 5 7 12));
+}
+
+/* A field holding a control that brings its own height — a segmented row —
+   gives up its padding so the control's own 40px is the row's height. */
+.fbk-field-tight { padding: var(--fbk-s-1, 2px); }
+
+/*
+ * A RULE AFTER THE LABEL, so it reads as one.
+ *
+ * `STEP  +2 +5 +10` put a word at the same height and weight as the cells
+ * beside it, and at a glance the word looked like a fourth option. A hairline
+ * between them says "this side names, that side chooses" — cheaper than
+ * shrinking the label until it stops competing, which is the other way to fix
+ * it and costs legibility.
+ */
+.fbk-field-label::after {
+    content: '';
+    display: inline-block;
+    width: var(--fbk-hairline, 1px);
+    height: 14px;
+    margin-left: var(--fbk-s-5, 10px);
+    vertical-align: -3px;
+    background: rgb(var(--fbk-border, 42 46 58));
+}
+
+.fbk-field-label {
+    flex: 0 0 auto;
+    font: var(--fbk-t-field, 600 9px/1.2 sans-serif);
+    letter-spacing: var(--fbk-t-field-track, 0.12em);
+    text-transform: uppercase;
+    white-space: nowrap;
+    color: rgb(var(--fbk-dim, 138 160 200));
+    padding-left: var(--fbk-s-3, 6px);
+}
+
+.fbk-field-body {
+    flex: 1 1 auto;
+    min-width: 0;
+    display: flex;
+    align-items: center;
+    gap: var(--fbk-s-4, 8px);
+}
+
+/*
+ * A ROW INSIDE A FIELD FILLS IT.
+ *
+ * `.fbk-row` has no `flex`, so it defaults to `0 1 auto` and sizes to its
+ * content — and a slider row's own `min-width: 0` then let the track collapse
+ * to whatever was left over rather than claiming the space. Measured: the
+ * CHART track stopped 119px short of its field's edge, which is the "not
+ * 100% long" report, and it was the row's fault rather than the track's.
+ */
+.fbk-field-body > .fbk-row {
+    flex: 1 1 auto;
+    min-width: 0;
+    margin: 0;
+}
+
+/*
+ * ONE SIGNAL PER BOUNDARY (§18), enforced downward.
+ *
+ * A segmented control has its own track and border; inside a field that is a
+ * boundary drawn twice, and two nested strokes 2px apart is exactly what makes
+ * a layout read as boxes in boxes. The field is the boundary now, so the
+ * things it contains give theirs up.
+ */
+/*
+ * CONCENTRIC CORNERS.
+ *
+ * A button sitting 2px inside a 12px well wants a 10px corner, not an 8px
+ * one: the two arcs share a centre only when the inner radius is the outer
+ * radius minus the gap. At 8 the inner corner is tighter than its container's
+ * and the 2px gap visibly widens at each corner — which is the "concentricity
+ * could be better" report, and it is arithmetic rather than taste.
+ */
+.fbk-stepper > .fbk-step:first-child {
+    border-radius: calc(var(--fbk-radius-well, 12px) - var(--fbk-s-1, 2px))
+        var(--fbk-radius-sm, 8px) var(--fbk-radius-sm, 8px)
+        calc(var(--fbk-radius-well, 12px) - var(--fbk-s-1, 2px));
+}
+
+.fbk-stepper > .fbk-step:last-child {
+    border-radius: var(--fbk-radius-sm, 8px)
+        calc(var(--fbk-radius-well, 12px) - var(--fbk-s-1, 2px))
+        calc(var(--fbk-radius-well, 12px) - var(--fbk-s-1, 2px))
+        var(--fbk-radius-sm, 8px);
+}
+
+.fbk-field .fbk-seg,
+.fbk-field .fbk-stepper {
+    border: 0;
+    background: none;
+    box-shadow: none;
+    padding: 0;
+}
+
+/*
+ * A STEPPER IS ITSELF A WELL.
+ *
+ * Not wrapped in one — it IS one. The design draws `− START 80% +` as a single
+ * bordered object with the buttons inside it, and that is also what it is:
+ * three parts of one control. Wrapping it would have put a stroke around a
+ * stroke.
+ */
+.fbk-stepper {
+    box-sizing: border-box;
+    padding: var(--fbk-s-1, 2px);
+    border-radius: var(--fbk-radius-well, 12px);
+    border: var(--fbk-hairline, 1px) solid rgb(var(--fbk-border, 42 46 58));
+    background: rgb(var(--fbk-bg, 5 7 12));
+    height: auto;
+    min-height: var(--fbk-h-md, 40px);
+}
+
+/* The strip gets the same treatment for the same reason — folded into its own
+   rule in §20, because two rules setting one element's height is the mistake. */
+
+/* A ghost that is an invitation rather than an afterthought: accent stroke,
+   accent ink, no fill. The design's third button tier. */
+.fbk-btn-accent {
+    border-color: rgb(var(--fbk-accent, 41 168 255));
+    background: none;
+    color: rgb(var(--fbk-accent, 41 168 255));
+}
+
+.fbk-btn-accent:hover:not(:disabled) {
+    background: rgb(var(--fbk-accent, 41 168 255) / 0.14);
+    color: rgb(var(--fbk-accent-hi, 96 194 255));
+}
+
+/* ═══ 14. Narrow windows, and the motion gate's belt-and-braces ══════════ */
+
+@media (max-width: 480px) {
+    .fbk-panel { width: calc(100vw - var(--fbk-s-6, 14px) * 2); }
+    .fbk-meter-name { flex-basis: 72px; }
+}
+
+/*
+ * `--fbk-motion` is set to `none` by src/theme.js from the host's own
+ * `prefersReducedMotion()`, so there is one answer for the whole app. This is
+ * the fallback for a host that predates that API.
+ */
+@media (prefers-reduced-motion: reduce) {
+    .fbk-panel *, .fbk-open-btn, .fbk-fold-chev { transition: none !important; }
+}
+
+/* ═══ 23. The select — one of a list too long, or too changeable, to lay out ══
+ *
+ * The third answer to "pick one", and the option COUNT is what decides which
+ * you get: up to four a segmented row, past that wrapping chips, and past the
+ * point where chips would be a wall — or when the app supplies the list at
+ * runtime so nobody knows how many there will be — the choice collapses to the
+ * one that is current.
+ *
+ * The element is a NATIVE `<select>` and the list it opens is the platform's.
+ * A hand-drawn sheet was built here first and withdrawn: what it cost was
+ * keyboard, type-ahead, screen readers, a gamepad and a list allowed to be
+ * taller than the panel. What is ours is the well it sits in.
+ */
+
+.fbk-select { position: relative; width: 100%; }
+
+/*
+ * THE WELL, and the select is transparent on top of it.
+ *
+ * `h-lg`, because this is the whole control rather than one value inside a
+ * field: it is what you aim at, and on a touch pointer it grows with the scale
+ * like everything else. `appearance: none` takes away the platform's own arrow
+ * so the rack can put back one of its own.
+ */
+.fbk-select-input {
+    box-sizing: border-box;
+    width: 100%;
+    height: var(--fbk-h-lg, 56px);
+    padding: 0 var(--fbk-h-lg, 56px) 0 var(--fbk-s-5, 10px);
+    border-radius: var(--fbk-radius, 14px);
+    border: var(--fbk-hairline, 1px) solid rgb(var(--fbk-border, 42 46 58));
+    background: rgb(var(--fbk-bg, 5 7 12));
+    box-shadow: var(--fbk-panel-inner, none);
+    color: rgb(var(--fbk-text, 232 238 252));
+    font: var(--fbk-t-label, 700 13px/1.25 sans-serif);
+    letter-spacing: var(--fbk-t-label-track, 0);
+    cursor: pointer;
+    -webkit-appearance: none;
+    appearance: none;
+    transition: border-color var(--fbk-motion, 140ms ease),
+                box-shadow var(--fbk-motion, 140ms ease);
+}
+
+.fbk-select-input:hover:not(:disabled) {
+    border-color: rgb(var(--fbk-dim, 138 160 200) / 0.5);
+}
+
+.fbk-select-input:focus-visible {
+    outline: none;
+    border-color: rgb(var(--fbk-accent, 41 168 255));
+    box-shadow: var(--fbk-edge-glow, none);
+}
+
+.fbk-select-input:disabled { opacity: var(--fbk-disabled-opacity, 0.38); cursor: default; }
+
+/*
+ * The list the platform opens is the platform's, but the closed element still
+ * inherits our ink — so the OPTIONS need a ground of their own or they render
+ * as dark text on a dark sheet on the platforms that honour this at all.
+ */
+.fbk-select-input option {
+    background: rgb(var(--fbk-surface, 12 15 22));
+    color: rgb(var(--fbk-text, 232 238 252));
+}
+
+/* A chosen value that is no longer IN the list — a board uninstalled while it
+   was the one picked. Said rather than swallowed. */
+.fbk-select-input[data-missing="true"] { border-color: rgb(var(--fbk-mid, 245 165 36) / 0.7); }
+
+/*
+ * OUR CHEVRON, and it is inert: the press has to reach the select underneath,
+ * because the well is the target — all of it.
+ */
+.fbk-select-chevron {
+    position: absolute;
+    top: 50%;
+    right: var(--fbk-s-2, 4px);
+    transform: translateY(-50%);
+    display: grid;
+    place-items: center;
+    width: var(--fbk-h-md, 40px);
+    height: var(--fbk-h-md, 40px);
+    border-radius: var(--fbk-radius-sm, 8px);
+    background: rgb(var(--fbk-surface-2, 30 34 44));
+    pointer-events: none;
+}
+
+.fbk-select-chevron::after {
+    content: '';
+    width: 8px;
+    height: 8px;
+    border-right: 2px solid rgb(var(--fbk-dim, 138 160 200));
+    border-bottom: 2px solid rgb(var(--fbk-dim, 138 160 200));
+    transform: translateY(-2px) rotate(45deg);
+}
+
+.fbk-select-input:focus-visible + .fbk-select-chevron {
+    background: rgb(var(--fbk-accent, 41 168 255));
+}
+
+.fbk-select-input:focus-visible + .fbk-select-chevron::after {
+    border-color: rgb(var(--fbk-on-accent, 5 7 12));
+}
+
+/* The derived companion to a value: what you asked for, then what is on
+   screen. Dim, because §21 — you cannot type into it. */
+.fbk-readout-aside {
+    font: var(--fbk-t-num, 700 11px/1.2 monospace);
+    letter-spacing: var(--fbk-t-num-track, 0.02em);
+    color: rgb(var(--fbk-dim, 138 160 200));
+}
