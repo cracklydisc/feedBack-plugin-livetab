@@ -258,12 +258,33 @@ import * as c from './src/kit/controls.js';
                 + 'it, the same way the technique marks are.',
         },
         {
-            key: 'matchInstrument', type: 'bool', def: false, group: 'look',
+            /*
+             * ACCESO di default, e prima era spento.
+             *
+             * Ha effetto in un caso solo — `staffLines()`: il tuo strumento ha
+             * PIU' corde del chart e della stessa famiglia. Fuori da quel caso
+             * accenderlo e spegnerlo e' identico, e su una chitarra a sei corde
+             * con un chart a sei corde e' ogni caso.
+             *
+             * Quando invece serve, acceso e' la risposta: una riga sullo
+             * schermo e' una corda sul manico, che e' tutto il valore di una
+             * tablatura. Spento, la riga piu' in basso non e' la corda piu'
+             * grave che tieni in mano, e la traslazione la fa il lettore.
+             *
+             * Il prezzo esiste e non lo diceva nessuno: una riga in piu' e'
+             * spazio verticale in meno, quindi `headR = min(headWanted, gap *
+             * 0.46)` porta giu' le teste con se'. E' un compromesso di
+             * densita', non di corrispondenza — chi ha un basso a cinque corde
+             * e vuole le teste grandi lo spegne, e ora l'hint glielo dice.
+             */
+            key: 'matchInstrument', type: 'bool', def: true, group: 'look',
             label: 'Match my instrument\u2019s strings',
             hint: 'A four-string chart on a five-string bass draws the extra low '
                 + 'string as an empty line, so the staff matches the neck in front '
                 + 'of you and a string is one line in both places. Read from the '
-                + 'instrument set in the app\u2019s tuning settings.',
+                + 'instrument set in the app\u2019s tuning settings. The extra '
+                + 'line costs vertical space, so the heads sit a little smaller — '
+                + 'turn it off if you would rather have the size.',
         },
         {
             key: 'noteInk', type: 'enum', def: 'string', group: 'look',
