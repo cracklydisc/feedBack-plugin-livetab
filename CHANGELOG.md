@@ -107,6 +107,13 @@ nine versions nobody could install. The release after 0.28.0 is this one.
   second title telling the reader they had entered somewhere new when they had
   not. A panel that opens over the game needs to say what it is, because it
   arrives with no frame; here the frame is the page.
+- **"Match my instrument's strings" is on by default.** It only ever does
+  anything when your instrument has more strings than the chart and is the same
+  family, so for most players flipping it changed nothing — and when it does
+  apply, matching is what you want: a line on the screen being a string on the
+  neck is the whole value of a tablature. The hint now also gives the reason to
+  turn it off, which it never had: the extra line costs vertical space, so the
+  heads come down with it.
 - **Every control starts at the same place.** The field row sized its label to
   its own text, so with the real labels — FRET NUMBERS, STRING CONTRAST, WHAT
   THE NOTE HEAD SAYS — each control began at a different x: nine of them on one
