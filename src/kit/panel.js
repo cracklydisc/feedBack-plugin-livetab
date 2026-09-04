@@ -92,6 +92,10 @@ const SLOT_WATCH_MS = 2000;
  * @param {string} [o.title]   the button's tooltip
  * @param {string} [o.ariaLabel] the panel's accessible name
  * @param {() => boolean} [o.canOpen] extra gate, e.g. "only in the player"
+ * @param {() => boolean} [o.canDismiss] false while the panel must stay put —
+ *        a click outside and Escape are ignored, while `close()`, the panel's
+ *        own action and leaving the player still work. For a panel that is
+ *        showing something in progress.
  */
 export function createPanel(o) {
     const id = String(o.id || 'plugin');
@@ -312,8 +316,31 @@ export function createPanel(o) {
         if (!here && open) setOpen(false);
     }
 
+    /*
+     * QUANDO IL PANNELLO NON SI PUO' CONGEDARE.
+     *
+     * Un popover si chiude se guardi altrove, e per un popover e' giusto. Ma
+     * un pannello che sta mostrando qualcosa IN CORSO — un drill a metа', con
+     * la sua percentuale che scende — non e' un popover: e' un quadrante. Un
+     * clic andato per sbaglio sullo sfondo lo faceva sparire, e per riavere il
+     * drill sotto gli occhi bisognava riaprirlo dalla rastrelliera, fermarlo e
+     * ricominciare. Chiesto: finche' il drill gira, quello si chiude solo con
+     * lo stop o uscendo dalla canzone.
+     *
+     * Gate sui soli GESTI DI CONGEDO — il clic fuori e l'Escape. Restano
+     * aperte tutte le strade volontarie: `close()`, l'azione del pannello
+     * stesso, e `syncVisibility` quando lasci il player. Cosi' non si crea un
+     * pannello che non si riesce piu' a chiudere: si toglie solo il modo
+     * accidentale di farlo.
+     */
+    function canDismiss() {
+        if (typeof o.canDismiss !== 'function') return true;
+        try { return !!o.canDismiss(); } catch (_) { return true; }
+    }
+
     function onKeydown(e) {
         if (e.key === 'Escape' && open) {
+            if (!canDismiss()) return;
             e.stopPropagation();
             setOpen(false);
         }
@@ -321,6 +348,7 @@ export function createPanel(o) {
 
     function onDocClick(e) {
         if (!open) return;
+        if (!canDismiss()) return;
         if (dismissesPanel(e && e.target, root, button)) setOpen(false);
     }
 

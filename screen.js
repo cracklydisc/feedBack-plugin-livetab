@@ -608,6 +608,15 @@ import * as c from './src/kit/controls.js';
     // same colour rather than inventing a second vocabulary for it.
     const COL_LOOP = 'rgba(74,222,128,0.85)';
     const COL_LOOP_FILL = 'rgba(74,222,128,0.10)';
+
+    /*
+     * Le note che in questo passaggio non tocca suonare: grigie, non colorate.
+     *
+     * `dim` e non un grigio inventato, cosi' seguono il tema come tutto il
+     * resto. Al 55% restano leggibili — devono restare leggibili, sono il
+     * contesto da cui il pezzo esce — ma smettono di competere con la zona.
+     */
+    const COL_OUT = () => kitInk('dim', 0.55);
     /*
      * THE CURSOR IS THE ACCENT, not white.
      *
@@ -2103,10 +2112,58 @@ import * as c from './src/kit/controls.js';
             }
         }
 
+        /*
+         * LA FINESTRA GIUDICATA SI LEGGE PRIMA DI TUTTO QUELLO CHE LA USA.
+         *
+         * Era dichiarata sessanta righe sotto il suo primo uso — la banda del
+         * loop la legge, il ciclo delle code la legge — e un `const` letto
+         * prima della sua riga non e' `undefined`: e' un ReferenceError. Quindi
+         * ogni frame in cui c'era un loop armato lanciava, il guard per staffa
+         * abbandonava la staffa, e la vista si rompeva appena partiva un drill.
+         * Segnalato esattamente cosi'.
+         *
+         * E' la terza volta in questa sessione che un identificatore usato dove
+         * non c'e' ancora costa una staffa intera — `beatsPerSec`, `r`, e ora
+         * questa. Le due precedenti le ha trovate il guard per staffa; questa
+         * l'ho spedita perche' ho verificato la regola pura con i test e non ho
+         * mai disegnato un frame con un loop armato. Un test che passa non e'
+         * un frame che si disegna.
+         */
+        const judged = judgedWindow();
+
         // ── The loop ─────────────────────────────────────────────────
         // Under the bar lines and under the notes: it is the ground the
         // passage stands on, not something else written on the staff.
         const loop = currentLoop();
+
+        /*
+         * FUORI DALLA ZONA LE NOTE PERDONO IL COLORE.
+         *
+         * Con un loop o un drill in corso, quello che sta prima e dopo non e'
+         * roba da suonare in questo passaggio: e' contesto. Ma era disegnato
+         * con lo stesso inchiostro della zona — sei corde colorate identiche
+         * dentro e fuori — quindi la parte su cui stai lavorando doveva
+         * distinguersi con la sola banda di sfondo, che e' un velo al 10%.
+         * Chiesto: fuori, bianco e nero.
+         *
+         * QUALE zona: quella GIUDICATA quando un drill gira, il loop
+         * altrimenti. Non e' un dettaglio — la rincorsa del drill sta dentro il
+         * loop e fuori dal punteggio, e sono cinque secondi di note che non ti
+         * vengono contate. Grigie dicono la verita' su di esse; colorate
+         * direbbero che fanno parte del pezzo.
+         *
+         * Restano grigie anche se le suoni: il verdetto, quando arriva, vince
+         * sull'inchiostro comunque — e nella rincorsa non arriva, perche'
+         * `verdictCounts` lo esclude.
+         */
+        const zone = judged || loop;
+        const outOfPlay = (t) => {
+            if (!zone) return false;
+            const n = Number(t);
+            const from = (zone.from !== undefined) ? zone.from : zone.a;
+            const to = (zone.to !== undefined) ? zone.to : zone.b;
+            return n < from - 0.02 || n > to + 0.02;
+        };
         if (loop) {
             const lx0 = xAt(loop.a);
             const lx1 = xAt(loop.b);
@@ -2330,7 +2387,6 @@ import * as c from './src/kit/controls.js';
          * sull'involucro `{n, t}`, creato una volta per frame e condiviso da
          * tutti i cicli e da tutte le staffe.
          */
-        const judged = judgedWindow();
         const verdictFor = (it) => {
             if (it._v !== undefined) return it._v;
             if (!verdictApplies(isLive, it.t, now)) { it._v = null; return null; }
@@ -2392,7 +2448,7 @@ import * as c from './src/kit/controls.js';
             const y = yAt(s);
             const x0 = xAt(it.t);
             const x1 = xAt(it.t + sus);
-            const col = noteOf(s);
+            const col = outOfPlay(it.t) ? COL_OUT() : noteOf(s);
             const target = slideTarget(it.n);
 
             if (target != null) {
@@ -2766,7 +2822,7 @@ import * as c from './src/kit/controls.js';
                nello stesso frame, appena scaduto il lampo. */
             const verdict = verdictFor(it);
             const isNow = isLive && Math.abs(it.t - now) <= NOW_WINDOW;
-            const base = noteOf(s);
+            const base = outOfPlay(it.t) ? COL_OUT() : noteOf(s);
             const ghost = !!it.n.ig;          // rendered but not scored
             let ink = base;
             let ring = base;

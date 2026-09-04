@@ -63,6 +63,15 @@ nine versions nobody could install. The release after 0.28.0 is this one.
   spacing so a held chord does not merge into one smear. With the green filling
   from the left, that is two signals for the same fact: one of colour, one of
   weight.
+- **Outside the zone the notes lose their colour.** With a loop or a drill
+  running, what comes before and after is context, not something to play in
+  this pass — and it was drawn in the same ink as the passage, six coloured
+  strings identical either side, so the part you were working on had only a 10%
+  background wash to distinguish it. Outside is greyscale now (`dim` at 55%,
+  still readable because it is still the context the passage comes out of).
+  Which zone: the *judged* window when a drill is running, the loop otherwise —
+  the run-in sits inside the loop and outside the score, and grey tells the
+  truth about it.
 - **A drill's run-in reads as a run-in.** The drill opens its loop five
   seconds before the bars you picked so you do not arrive at a sprint, and
   `getLoop()` reports that earlier point — so the tab showed the loop starting
