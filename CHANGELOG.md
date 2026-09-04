@@ -55,6 +55,14 @@ nine versions nobody could install. The release after 0.28.0 is this one.
   heads, bend arcs and the bend amount follow the same rule. One flat colour
   would have said "this note went well" while the note was still going, which
   on a two-bar hold is an answer given before the question.
+- **A note swells while you are playing it.** The heads have always grown on
+  the beat they land on; a long note's head is long gone by the time you are
+  holding it, and under the cursor there was only the tail, the same thickness
+  from end to end — the one part you were playing was the one part not saying
+  so. It now thickens while the cursor is inside it, capped at the string
+  spacing so a held chord does not merge into one smear. With the green filling
+  from the left, that is two signals for the same fact: one of colour, one of
+  weight.
 - **A verdict is remembered while the note is on screen.** The detector reports
   a miss for 0.6s (`NOTE_MISS_GEM_TTL`) and a hit for the length of its glow,
   which is right for a gem that scrolls away — but a tablature keeps the note

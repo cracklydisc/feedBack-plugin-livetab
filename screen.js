@@ -2387,7 +2387,32 @@ import * as c from './src/kit/controls.js';
                  * testa grande deve essere grande. Un terzo del raggio, con un
                  * minimo per le teste minuscole.
                  */
-                const tailW = Math.max(2.5, headR * 0.34);
+                /*
+                 * MENTRE LA SUONI, LA CODA SI GONFIA.
+                 *
+                 * Le teste lo fanno da sempre — `isNow ? headR * 1.16` — e la
+                 * ragione e' la stessa: "adesso" e' l'unica cosa che una
+                 * tablatura in movimento deve dire senza che la si cerchi. Su
+                 * una nota lunga o un vibrato pero' la testa e' passata da un
+                 * pezzo e sotto il cursore c'e' solo la coda, che restava
+                 * dello stesso spessore dall'inizio alla fine: la sola parte
+                 * che stai suonando era anche la sola che non diceva di
+                 * esserlo. Chiesto di allargarla come i cerchi.
+                 *
+                 * Il gonfiore vale mentre il cursore e' DENTRO la nota, non
+                 * per tutta la sua vita, percio' cresce quando la attacchi e
+                 * torna giu' quando finisce — e con il verde che avanza fanno
+                 * due segnali dello stesso fatto, uno di colore e uno di peso.
+                 *
+                 * Il tetto e' la distanza fra due corde: una coda piu' spessa
+                 * di quella toccherebbe la corda accanto, e su un accordo
+                 * tenuto sarebbero sei code che si fondono in una macchia.
+                 */
+                const held = isLive && playX >= x0 && playX <= x1;
+                const tailW = Math.min(
+                    Math.max(2.5, headR * 0.34) * (held ? 1.5 : 1),
+                    gap * 0.32
+                );
                 const from = x0 + headR * 0.92;
                 if (x1 > from + 1) {
                     /*
