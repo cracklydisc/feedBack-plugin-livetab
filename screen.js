@@ -1198,6 +1198,56 @@ import * as c from './src/kit/controls.js';
         return (loopCache.a === null) ? null : { a: loopCache.a, b: loopCache.b };
     }
 
+    /**
+     * DOVE IL DRILL CONTA DAVVERO, che non e' dove comincia il loop.
+     *
+     * Il drill fa partire il loop cinque secondi prima delle battute scelte —
+     * `_ND_DRILL_LEAD_IN_SEC`, il rincorsa per non entrare di corsa — e
+     * `getLoop()` restituisce QUEL punto. Cosi' la tab mostrava il loop dalla
+     * battuta 42 quando l'utente aveva chiesto 45, con i verdi e i rossi anche
+     * la' dentro, e non si capiva che il contatore scende solo da 45.
+     *
+     * `getConductorState().range` porta i due confini separati: `loopStart` e
+     * `judgeStart`. Letta con la stessa cadenza del loop e con la stessa
+     * ragione — il commento dell'app dice che un plugin che interrogava queste
+     * superfici a 30 Hz saturava l'ispettore.
+     */
+    let judgeCache = { at: -1e9, from: null, to: null };
+
+    function judgedWindow() {
+        const now = (window.performance && performance.now) ? performance.now() : 0;
+        if (now - judgeCache.at > 250) {
+            judgeCache = { at: now, from: null, to: null };
+            try {
+                const nd = window.noteDetect;
+                const st = (nd && typeof nd.getConductorState === 'function')
+                    ? nd.getConductorState() : null;
+                const r = st && st.active ? st.range : null;
+                if (r && typeof r.judgeStart === 'number' && typeof r.judgeEnd === 'number'
+                    && r.judgeEnd > r.judgeStart) {
+                    judgeCache.from = r.judgeStart;
+                    judgeCache.to = r.judgeEnd;
+                }
+            } catch (_) { /* nessun drill, o un rilevatore piu' vecchio */ }
+        }
+        return (judgeCache.from === null) ? null : { from: judgeCache.from, to: judgeCache.to };
+    }
+
+    /**
+     * Se una nota puo' portare un verdetto CHE CONTA.
+     *
+     * Fuori dalla finestra giudicata di un drill il rilevatore giudica comunque
+     * — sente tutto quello che suoni — ma il punteggio del passaggio si calcola
+     * solo dentro. Dipingere di rosso una nota della rincorsa dice al lettore
+     * che ha sbagliato qualcosa che non gli e' stato contato: una bugia utile a
+     * nessuno, e precisamente cio' che rendeva illeggibile il contatore.
+     */
+    function verdictCounts(judged, noteT) {
+        if (!judged) return true;
+        const t = Number(noteT);
+        return t >= judged.from - 0.02 && t <= judged.to + 0.02;
+    }
+
     function staffLines(chartCount, myCount, chartIsBass, myIsBass) {
         const plain = { lines: chartCount, rowOffset: 0 };
         if (!myCount || myCount <= chartCount) return plain;
@@ -2066,6 +2116,44 @@ import * as c from './src/kit/controls.js';
                 ctx.fillStyle = COL_LOOP_FILL;
                 ctx.fillRect(x0, staffTop - 6 * k, x1 - x0,
                     (staffBottom - staffTop) + 12 * k);
+
+                /*
+                 * LA RINCORSA NON E' LA PARTE CHE CONTA, e si vede.
+                 *
+                 * Un drill apre il loop cinque secondi prima delle battute
+                 * chieste, cosi' non ci entri di corsa. Ma la banda del loop
+                 * copriva tutto allo stesso modo, quindi la tab diceva "il
+                 * pezzo e' questo" indicando tre battute in piu' di quelle
+                 * scelte — e il contatore, che parte dalla battuta giusta,
+                 * sembrava sbagliato.
+                 *
+                 * Un secondo velo sulla sola parte giudicata e una riga sul
+                 * confine: la rincorsa resta dentro il loop (la senti, e devi
+                 * sentirla) ma si legge come avvicinamento, e il punto da cui
+                 * si conta e' un posto preciso invece di un'informazione che
+                 * hai solo nel pannello.
+                 */
+                if (judged) {
+                    const jx0 = Math.max(x0, xAt(judged.from));
+                    const jx1 = Math.min(x1, xAt(judged.to));
+                    if (jx1 > jx0) {
+                        ctx.fillStyle = COL_LOOP_FILL;
+                        ctx.fillRect(jx0, staffTop - 6 * k, jx1 - jx0,
+                            (staffBottom - staffTop) + 12 * k);
+                    }
+                    const jx = xAt(judged.from);
+                    if (jx > clipLeft && jx < w) {
+                        ctx.save();
+                        ctx.strokeStyle = kitInk('accent', 0.75);
+                        ctx.lineWidth = Math.max(1.4, 1.8 * k);
+                        ctx.setLineDash([3 * k, 3 * k]);
+                        ctx.beginPath();
+                        ctx.moveTo(Math.round(jx) + 0.5, staffTop - 6 * k);
+                        ctx.lineTo(Math.round(jx) + 0.5, staffBottom + 6 * k);
+                        ctx.stroke();
+                        ctx.restore();
+                    }
+                }
                 // Repeat signs, not just uprights. A tinted band is easy to
                 // miss against a dark staff and says nothing about which way
                 // the music goes; the sign every musician already reads — a
@@ -2242,9 +2330,11 @@ import * as c from './src/kit/controls.js';
          * sull'involucro `{n, t}`, creato una volta per frame e condiviso da
          * tutti i cicli e da tutte le staffe.
          */
+        const judged = judgedWindow();
         const verdictFor = (it) => {
             if (it._v !== undefined) return it._v;
             if (!verdictApplies(isLive, it.t, now)) { it._v = null; return null; }
+            if (!verdictCounts(judged, it.t)) { it._v = null; return null; }
             let v = null;
             if (provider) {
                 try { v = verdictOf(provider(it.n, it.t)); } catch (_) { v = null; }

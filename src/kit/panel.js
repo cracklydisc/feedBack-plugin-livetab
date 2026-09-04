@@ -47,6 +47,38 @@
  * non si spegne. `ensureButton()` e' un `contains` quando il pulsante e' al
  * suo posto, quindi il costo a regime e' una chiamata ogni due secondi.
  */
+/*
+ * La struttura del player: la barra dei comandi e la rastrelliera laterale.
+ * Sono i posti da cui si opera il brano MENTRE un pannello e' aperto.
+ */
+const PLAYER_CHROME = '#player-controls, #v3-player-rail, .v3-transport, .v3-rail';
+
+/**
+ * Se un clic deve chiudere il pannello.
+ *
+ * IL PLAYER NON E' "FUORI". Il pannello si chiudeva a ogni clic che non
+ * cadeva dentro di se' o sul proprio pulsante — la regola normale di un
+ * popover — e fra quei clic c'e' il tasto di pausa in fondo allo schermo.
+ * Risultato: mettevi in pausa e il pannello del drill si chiudeva, e per
+ * riavere sotto gli occhi il drill dovevi riaprirlo dalla rastrelliera e
+ * rifarlo partire. Ogni volta. Segnalato esattamente cosi'.
+ *
+ * Un popover si chiude quando guardi altrove, ed e' giusto; ma il tasto play
+ * non e' altrove, e' lo stesso brano di cui il pannello sta mostrando lo
+ * stato. Un pannello che si spegne perche' hai messo in pausa la cosa che sta
+ * misurando ha capito male a che cosa serve.
+ *
+ * Fuori dalla chiusura di `createPanel` perche' prende tutto per argomenti:
+ * cosi' la regola si prova senza costruire un pannello e un DOM finto.
+ */
+function dismissesPanel(target, root, button) {
+    if (!target) return true;
+    if (root && typeof root.contains === 'function' && root.contains(target)) return false;
+    if (button && typeof button.contains === 'function' && button.contains(target)) return false;
+    if (typeof target.closest === 'function' && target.closest(PLAYER_CHROME)) return false;
+    return true;
+}
+
 const SLOT_RETRY_MS = 500;
 /** ~12s di attesa dell'aggancio, prima di passare al battito lento. */
 const SLOT_RETRY_TRIES = 24;
@@ -289,9 +321,7 @@ export function createPanel(o) {
 
     function onDocClick(e) {
         if (!open) return;
-        if (root.contains(e.target)) return;
-        if (button && button.contains(e.target)) return;
-        setOpen(false);
+        if (dismissesPanel(e && e.target, root, button)) setOpen(false);
     }
 
     close.addEventListener('click', () => setOpen(false));

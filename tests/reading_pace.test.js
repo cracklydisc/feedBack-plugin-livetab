@@ -509,19 +509,21 @@ test('a note the cursor has not reached carries no verdict', () => {
      * Qui corre la catena vera: filtro del futuro, provider, memoria.
      */
     const rule = extractFunction(SRC, 'function verdictApplies');
+    const counts = extractFunction(SRC, 'function verdictCounts');
     const chain = extractFunction(SRC, 'const verdictFor =');
 
-    const build = (live, now, answers) => {
+    const build = (live, now, answers, judged = null) => {
         const asked = [];
         const sandbox = {
             NOW_WINDOW: 0.09, Number, WeakMap,
-            isLive: live, now,
+            isLive: live, now, judged,
             provider: (n, t) => { asked.push(t); return answers[t]; },
             verdictOf: (raw) => (raw ? (raw.state === 'active' ? 'hit' : raw.state) : null),
         };
         vm.createContext(sandbox);
         vm.runInContext(
-            'let verdictSeen = new WeakMap();\n' + rule + '\n' + chain
+            'let verdictSeen = new WeakMap();\n' + rule + '\n'
+            + counts + '\n' + chain
             + '\nglobalThis.ask = verdictFor;',
             sandbox);
         /* L'array vive nello scope del test, non nel sandbox: una funzione
@@ -557,4 +559,22 @@ test('a note the cursor has not reached carries no verdict', () => {
     // filtered and a finished section keeps its colours.
     const still = build(false, 9, { 12: { state: 'hit' } });
     assert.equal(still.ask({ n: {}, t: 12 }), 'hit');
+
+    /*
+     * E la finestra giudicata di un drill. Il drill apre il loop cinque
+     * secondi prima delle battute chieste, e il rilevatore giudica anche
+     * quelle: sono suonate, semplicemente non contate. Dipingerle di rosso
+     * dice al lettore che ha sbagliato qualcosa che nessuno gli ha contato,
+     * ed e' cio' che rendeva illeggibile il contatore del repeater.
+     */
+    const drill = { from: 45, to: 60 };
+    const inRun = build(true, 50, { 43: { state: 'miss' } }, drill);
+    assert.equal(inRun.ask({ n: {}, t: 43 }), null, 'la rincorsa non si giudica');
+    const scored = build(true, 50, { 46: { state: 'miss' } }, drill);
+    assert.equal(scored.ask({ n: {}, t: 46 }), 'miss', 'dentro la finestra si');
+    const past = build(true, 70, { 62: { state: 'hit' } }, drill);
+    assert.equal(past.ask({ n: {}, t: 62 }), null, 'oltre la fine nemmeno');
+    // Senza drill in corso non si filtra niente.
+    const free = build(true, 50, { 43: { state: 'miss' } }, null);
+    assert.equal(free.ask({ n: {}, t: 43 }), 'miss');
 });

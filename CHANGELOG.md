@@ -63,6 +63,18 @@ nine versions nobody could install. The release after 0.28.0 is this one.
   spacing so a held chord does not merge into one smear. With the green filling
   from the left, that is two signals for the same fact: one of colour, one of
   weight.
+- **A drill's run-in reads as a run-in.** The drill opens its loop five
+  seconds before the bars you picked so you do not arrive at a sprint, and
+  `getLoop()` reports that earlier point — so the tab showed the loop starting
+  at bar 42 when you had asked for 45, greens and reds inside it, and the
+  Repeater's counter looked wrong for starting where it does. The judged window
+  comes from `getConductorState().range`, and it now gets a second wash and a
+  dashed line on its first edge: the run-in stays inside the loop, because you
+  need to hear it, but it reads as approach rather than as the passage. Notes
+  in it carry no verdict either — the detector judges them, nothing counts
+  them, and red on an uncounted note is a lie about your own score.
+- **The panel stops closing when you pause** (kit): the transport and the
+  player's rail are no longer "outside" for the dismiss-on-outside-click rule.
 - **A note the cursor has not reached carries no verdict.** After a loop
   restart the first notes came back wearing the previous pass's judgments,
   green and red, ahead of the playhead. Two sources, one rule. The green was
