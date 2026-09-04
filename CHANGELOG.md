@@ -45,6 +45,25 @@ nine versions nobody could install. The release after 0.28.0 is this one.
 
 ### Changed
 
+- **The verdict colours the whole note, and it fills as you hold it.** Only the
+  head turned green: on a long sustain or a vibrato — where the tail *is* the
+  note, and the biggest thing on the staff — the feedback was about the circle
+  at the left while the part you were actually playing said nothing. Now the
+  stretch already under the cursor takes the verdict's colour and the stretch
+  ahead keeps the string's, with a hard edge at the playhead, so the green
+  fills the note from left to right as you hold it. Slide bands, their arrival
+  heads, bend arcs and the bend amount follow the same rule. One flat colour
+  would have said "this note went well" while the note was still going, which
+  on a two-bar hold is an answer given before the question.
+- **A verdict is remembered while the note is on screen.** The detector reports
+  a miss for 0.6s (`NOTE_MISS_GEM_TTL`) and a hit for the length of its glow,
+  which is right for a gem that scrolls away — but a tablature keeps the note
+  in view, so after those six tenths it went back to grey at 30%: "nothing
+  happened" in place of "you missed this one". The first verdict is kept now,
+  and the provider still wins whenever it has something to say; the memory
+  fills gaps, it never invents a judgment or anticipates one. Time running
+  backwards — a loop, a seek, a new song — drops it, or a Riff Repeater loop
+  would show the last pass's red before you played the note.
 - **The drawing reads the kit's tokens.** Colours and type come from the theme
   at draw time rather than from constants in this file, so the staff follows
   the same palette as every panel. A canvas cannot inherit a custom property,
@@ -79,6 +98,12 @@ nine versions nobody could install. The release after 0.28.0 is this one.
 
 ### Fixed
 
+- **A plugin panel could vanish from the player's controls.** The kit's slot
+  watch gave up twelve seconds after attaching, so a player that rebuilt its
+  control slot after that lost the Tab view button for the rest of the session
+  — and the plugin could not tell, because `mountControls()` reports success as
+  soon as its panel object exists. Fixed in the kit (a resting heartbeat that
+  never stops) and re-vendored.
 - **Chord names never drew, on any song with phrase data.** The plugin asked
   for the difficulty-filtered chord list and fell through to the raw one only
   when the answer was falsy — and an empty array is truthy, so a chart whose

@@ -662,6 +662,50 @@ import * as c from './src/kit/controls.js';
         return (typeof n.slu === 'number' && n.slu >= 0) ? n.slu : null;
     }
 
+    /*
+     * IL VERDETTO SI RICORDA, perche' il provider lo dice per poco.
+     *
+     * `noteStateFor` nel rilevatore restituisce `miss` solo finche'
+     * `age < NOTE_MISS_GEM_TTL`, cioe' 0,6 secondi, e poi `null`; il verde di
+     * una nota colpita svanisce con `hitGlowDuration`. E' giusto per una gemma
+     * che scorre e sparisce, ma una tablatura tiene la nota sullo schermo
+     * finche' non esce dalla finestra: passati quei sei decimi la nota tornava
+     * grigia al 30%, cioe' "non e' successo niente" al posto di "questa
+     * l'hai sbagliata". Segnalato come riscontro che non arriva.
+     *
+     * Quindi il primo verdetto che arriva viene tenuto, e il provider vince
+     * sempre quando ha qualcosa da dire: la memoria riempie i buchi, non
+     * inventa giudizi. Non anticipa nulla — decidere da soli che una nota e'
+     * mancata vorrebbe dire duplicare la finestra di timing del rilevatore e
+     * poter contraddire il suo verdetto su una nota presa in ritardo.
+     *
+     * Una `WeakMap` sulla nota stessa, non una mappa con una chiave: le note
+     * arrivano dagli array del chart, che il caricamento di un altro brano
+     * sostituisce — quindi la memoria si invalida da se' e non c'e' niente da
+     * ripulire. E niente viene scritto sugli oggetti dell'app, che il suo
+     * contratto chiede di trattare come di sola lettura.
+     */
+    let verdictSeen = new WeakMap();
+    let verdictSince = -1;
+
+    /*
+     * UN SALTO INDIETRO AZZERA LA MEMORIA.
+     *
+     * Le note sono gli stessi oggetti a ogni giro, quindi in un loop di Riff
+     * Repeater il rosso del passaggio precedente si sarebbe ripresentato prima
+     * che tu suonassi la nota: un giudizio dato sul giro sbagliato, che e' peggio
+     * di nessun giudizio. Vale anche per un seek a mano e per il cambio di
+     * brano.
+     *
+     * Il tempo che torna indietro e' il segnale, e non serve un evento
+     * dell'app: un quarto di secondo di tolleranza perche' il tempo del player
+     * puo' oscillare di un frame senza che sia un salto.
+     */
+    function verdictClock(now) {
+        if (now < verdictSince - 0.25) verdictSeen = new WeakMap();
+        verdictSince = now;
+    }
+
     /** Normalise a provider verdict: bare string or { state } -> 'hit'|'miss'|null. */
     function verdictOf(raw) {
         if (!raw) return null;
@@ -2151,6 +2195,64 @@ import * as c from './src/kit/controls.js';
             return lo > 0 && Math.abs(arr[lo - 1] - time) < 0.09;
         };
 
+        /*
+         * IL VERDETTO UNA VOLTA PER NOTA, non una per disegno.
+         *
+         * Lo chiedevano solo le teste; ora lo chiedono anche le code, le bande
+         * degli slide e gli archi dei bend, e interrogare il provider quattro
+         * volte per nota per frame significa quadruplicare l'unico lavoro di
+         * questo disegno che non e' nostro. Il risultato si appoggia
+         * sull'involucro `{n, t}`, creato una volta per frame e condiviso da
+         * tutti i cicli e da tutte le staffe.
+         */
+        const verdictFor = (it) => {
+            if (it._v !== undefined) return it._v;
+            let v = null;
+            if (provider) {
+                try { v = verdictOf(provider(it.n, it.t)); } catch (_) { v = null; }
+            }
+            if (v && it.n && typeof it.n === 'object') verdictSeen.set(it.n, v);
+            else if (!v && it.n) v = verdictSeen.get(it.n) || null;
+            it._v = v;
+            return v;
+        };
+
+        /*
+         * IL VERDE AVANZA CON LA NOTA, e prima si fermava alla testa.
+         *
+         * La testa diventava verde e la coda restava del colore della corda:
+         * su una tenuta lunga o su un vibrato — dove la coda E' la nota, ed e'
+         * la cosa piu' grande sullo schermo — il riscontro riguardava il
+         * cerchietto in fondo mentre la parte che stai davvero suonando non
+         * diceva niente. Segnalato esattamente cosi'.
+         *
+         * Quindi la parte GIA' passata sotto il cursore prende il colore del
+         * verdetto e quella che resta tiene il colore della corda. Il
+         * passaggio e' netto sul playhead, percio' mentre tieni la nota il
+         * verde la riempie da sinistra a destra e vedi quanto ne hai preso.
+         * Finita, e' tutta del verdetto; non ancora iniziata, tutta della
+         * corda.
+         *
+         * Un colore solo non farebbe lo stesso lavoro: direbbe "questa nota e'
+         * andata bene" mentre la nota non e' ancora finita, e su una tenuta da
+         * due battute e' una risposta data prima della domanda.
+         */
+        const heldInk = (x0, x1, col, v) => {
+            if (!v) return col;
+            const c = (v === 'hit') ? COL_HIT() : COL_MISS();
+            if (!isLive || playX >= x1) return c;
+            if (playX <= x0 || x1 - x0 < 1) return col;
+            const g = ctx.createLinearGradient(x0, 0, x1, 0);
+            const at = (playX - x0) / (x1 - x0);
+            g.addColorStop(0, c);
+            g.addColorStop(at, c);
+            /* Due fermate quasi sullo stesso punto: il passaggio e' un
+               confine, non una sfumatura, perche' dice DOVE sei arrivato. */
+            g.addColorStop(Math.min(1, at + 0.0001), col);
+            g.addColorStop(1, col);
+            return g;
+        };
+
         // ── Sustains, slides and bends ───────────────────────────────
         // Drawn first so the note heads sit on top of their own tails.
         ctx.lineCap = 'round';
@@ -2176,8 +2278,12 @@ import * as c from './src/kit/controls.js';
                 if (it.n.slu != null && it.n.slu >= 0 && (it.n.sl == null || it.n.sl < 0)) {
                     ctx.setLineDash([4 * k, 3 * k]);
                 }
+                /* Anche la banda di uno slide dice come e' andata: e' la
+                   parte di nota che suoni mentre la mano si muove. */
+                const sv = verdictFor(it);
+                const sCol = sv ? ((sv === 'hit') ? COL_HIT() : COL_MISS()) : col;
                 const grad = ctx.createLinearGradient(x0, y, x1, y);
-                grad.addColorStop(0, col);
+                grad.addColorStop(0, sCol);
                 /* Fading to nothing rather than to a white ghost: the band
                    belongs to the string it leaves, all the way along. */
                 grad.addColorStop(1, kitInk('dim', 0.15));
@@ -2233,12 +2339,12 @@ import * as c from './src/kit/controls.js';
                     }
                     ctx.fillStyle = 'rgb(6 9 15)';
                     ctx.fill();
-                    ctx.strokeStyle = col;
+                    ctx.strokeStyle = sCol;
                     ctx.lineWidth = Math.max(1, 1.1 * k);
                     ctx.globalAlpha = 0.75;
                     ctx.stroke();
                     ctx.globalAlpha = 1;
-                    ctx.fillStyle = col;
+                    ctx.fillStyle = sCol;
                     fillInkCentred(ctx, arrival, x1, gy);
                     ctx.restore();
                 }
@@ -2295,7 +2401,9 @@ import * as c from './src/kit/controls.js';
                      * deve arrivarci intera e chiudersi con un segno, non
                      * svanire.
                      */
-                    ctx.strokeStyle = col;
+                    /* La coda e il vibrato condividono un solo tracciato,
+                       quindi un solo inchiostro li copre entrambi. */
+                    ctx.strokeStyle = heldInk(from, x1, col, verdictFor(it));
                     ctx.globalAlpha = 0.85;
                     ctx.lineWidth = tailW;
                     ctx.lineCap = 'round';
@@ -2323,6 +2431,10 @@ import * as c from './src/kit/controls.js';
                      */
                     ctx.lineCap = 'butt';
                     ctx.lineWidth = Math.max(1.6, tailW * 0.5);
+                    /* Il taglio sta sulla fine della nota: se il cursore l'ha
+                       passata la nota e' finita, quindi porta il verdetto
+                       pieno. */
+                    ctx.strokeStyle = heldInk(x1, x1, col, verdictFor(it));
                     ctx.beginPath();
                     ctx.moveTo(x1, y - tailW * 0.95);
                     ctx.lineTo(x1, y + tailW * 0.95);
@@ -2379,7 +2491,11 @@ import * as c from './src/kit/controls.js';
                 const topY = y - rise;
 
                 ctx.save();
-                ctx.strokeStyle = col;
+                /* L'arco, la punta e la quantita' sono la nota che sale: se la
+                   nota e' presa, salgono in verde. */
+                const bv = verdictFor(it);
+                const bCol = bv ? ((bv === 'hit') ? COL_HIT() : COL_MISS()) : col;
+                ctx.strokeStyle = bCol;
                 ctx.lineWidth = Math.max(1.5, 2 * k);
                 ctx.beginPath();
                 /*
@@ -2406,7 +2522,7 @@ import * as c from './src/kit/controls.js';
                    the font has and sits on the text baseline, not on the arc. */
                 const ax = bx + 11 * k;
                 const ah = 3.2 * k;
-                ctx.fillStyle = col;
+                ctx.fillStyle = bCol;
                 ctx.beginPath();
                 ctx.moveTo(ax + ah, topY);
                 ctx.lineTo(ax - ah * 0.6, topY - ah);
@@ -2441,7 +2557,7 @@ import * as c from './src/kit/controls.js';
                 ctx.fillStyle = 'rgb(9 13 22)';
                 ctx.fill();
 
-                ctx.fillStyle = col;
+                ctx.fillStyle = bCol;
                 fillInkCentred(ctx, txt, blx, topY, 'left');
                 ctx.restore();
             }
@@ -2492,10 +2608,10 @@ import * as c from './src/kit/controls.js';
             // still runs to the edge, so nothing is lost that matters.
             if (x < clipLeft + headR) continue;
 
-            let verdict = null;
-            if (provider) {
-                try { verdict = verdictOf(provider(it.n, it.t)); } catch (_) { verdict = null; }
-            }
+            /* Lo stesso verdetto delle code, memoria compresa: chiederlo due
+               volte al provider darebbe due risposte diverse sulla stessa nota
+               nello stesso frame, appena scaduto il lampo. */
+            const verdict = verdictFor(it);
             const isNow = isLive && Math.abs(it.t - now) <= NOW_WINDOW;
             const base = noteOf(s);
             const ghost = !!it.n.ig;          // rendered but not scored
@@ -2958,6 +3074,7 @@ import * as c from './src/kit/controls.js';
         const count = Math.max(4, Math.min(8, call(host, 'getStringCount', 6) || 6));
         const hostColors = S.useHostColors ? call(host, 'getStringColors', null) : null;
         const now = call(host, 'getTime', 0) || 0;
+        verdictClock(now);
         const beats = call(host, 'getBeats', []) || [];
 
         const items = [];

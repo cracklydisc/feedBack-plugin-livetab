@@ -445,3 +445,34 @@ test('the chord card puts the lowest string first', () => {
     assert.equal(chordCells({ frets: [-1, -1, -1, -1, -1, -1] }, 6), null);
     assert.equal(chordCells(null, 6), null);
 });
+
+// ─────────────────────────────────────────────────────────────────────────
+// A LOOP MUST NOT INHERIT THE LAST PASS'S VERDICTS.
+//
+// The verdict memory is keyed on the note object, and a loop replays the very
+// same objects — so without this, the red from the previous pass would be back
+// on the note before you played it: a judgment from the wrong pass, which is
+// worse than no judgment. Time running backwards is the signal, with a quarter
+// of a second of slack because a player's clock can wobble by a frame without
+// it being a jump.
+test('the verdict memory is dropped when time runs backwards', () => {
+    const fn = extractFunction(SRC, 'function verdictClock');
+    const sandbox = { verdictSeen: null, verdictSince: -1, WeakMap };
+    vm.createContext(sandbox);
+    vm.runInContext(
+        'let verdictSeen = new WeakMap(); let verdictSince = -1;\n'
+        + fn
+        + '\nglobalThis.run = (times) => {\n'
+        + '  const seen = [];\n'
+        + '  for (const t of times) { const before = verdictSeen; verdictClock(t);'
+        + '    seen.push(verdictSeen === before); }\n'
+        + '  return seen;\n'
+        + '};', sandbox);
+
+    // Playing forward: the memory is kept throughout.
+    assert.deepEqual([...sandbox.run([1, 2, 3, 4])], [true, true, true, true]);
+    // A frame of wobble is not a jump.
+    assert.deepEqual([...sandbox.run([5, 4.9, 5.1])], [true, true, true]);
+    // A loop point, a seek, a new song: dropped.
+    assert.deepEqual([...sandbox.run([10, 2])], [true, false]);
+});

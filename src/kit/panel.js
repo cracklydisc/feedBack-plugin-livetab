@@ -25,9 +25,33 @@
  * over the notes. Parking it deletes all of that code.
  */
 
+/*
+ * IL POSTO PUO' ESSERE RICOSTRUITO IN QUALSIASI MOMENTO, non solo all'inizio.
+ *
+ * C'era un solo ritmo, 500ms per 24 tentativi, e poi `clearInterval`: dopo
+ * dodici secondi nessuno rimetteva piu' il pulsante. Il commento sopra
+ * `attach()` diceva pure "si continua oltre il primo successo: il posto puo'
+ * essere ricreato" — e poi il tetto di 24 lo impediva, che e' una guardia che
+ * contraddice la ragione per cui esiste.
+ *
+ * Conseguenza vista: il pannello di Live Tab non compariva fra i controlli del
+ * player in un'istanza usata a lungo. Il plugin non se ne accorgeva, perche'
+ * `mountControls()` restituisce `true` appena `panel` esiste — quindi nessuno
+ * riattaccava, e per il resto della sessione quel pannello non c'era piu'.
+ * Riff Repeater sopravviveva soltanto perche' il suo `attach` cadeva in un
+ * momento in cui la finestra dei dodici secondi copriva la ricostruzione:
+ * stesso difetto, esito diverso per fortuna.
+ *
+ * Adesso: veloce mentre si aspetta l'aggancio — lo script di un plugin puo'
+ * caricare molto prima della struttura del player — e poi un battito lento che
+ * non si spegne. `ensureButton()` e' un `contains` quando il pulsante e' al
+ * suo posto, quindi il costo a regime e' una chiamata ogni due secondi.
+ */
 const SLOT_RETRY_MS = 500;
-/** ~12s. A plugin's script can load a long way ahead of the player chrome. */
+/** ~12s di attesa dell'aggancio, prima di passare al battito lento. */
 const SLOT_RETRY_TRIES = 24;
+/** Il battito che resta: rimette il pulsante se il posto viene ricostruito. */
+const SLOT_WATCH_MS = 2000;
 
 /**
  * @param {object} o
@@ -185,6 +209,7 @@ export function createPanel(o) {
     let button = null;
     let placed = false;
     let retryTimer = null;
+    let watchMs = SLOT_RETRY_MS;
     let tries = 0;
     const listeners = new Set();
 
@@ -276,17 +301,23 @@ export function createPanel(o) {
         ensurePanel();
         syncVisibility();
         if (!retryTimer) {
-            retryTimer = setInterval(() => {
+            const beat = () => {
                 tries += 1;
                 const ok = ensureButton();
                 if (ok) syncVisibility();
-                // Keep going past the first success: the slot can be
-                // re-created, and ensureButton() is a no-op when in place.
-                if (tries > SLOT_RETRY_TRIES && ok) {
+                /*
+                 * Passata l'attesa dell'aggancio si rallenta, ma non si
+                 * smette: il posto puo' essere ricostruito quando il player
+                 * si rimonta, e allora il pulsante va rimesso. Fermarsi qui
+                 * e' come il pannello sparisse da solo.
+                 */
+                if (tries > SLOT_RETRY_TRIES && ok && watchMs !== SLOT_WATCH_MS) {
+                    watchMs = SLOT_WATCH_MS;
                     clearInterval(retryTimer);
-                    retryTimer = null;
+                    retryTimer = setInterval(beat, watchMs);
                 }
-            }, SLOT_RETRY_MS);
+            };
+            retryTimer = setInterval(beat, watchMs);
         }
         document.addEventListener('keydown', onKeydown, true);
         document.addEventListener('click', onDocClick, true);
