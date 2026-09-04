@@ -63,6 +63,18 @@ nine versions nobody could install. The release after 0.28.0 is this one.
   spacing so a held chord does not merge into one smear. With the green filling
   from the left, that is two signals for the same fact: one of colour, one of
   weight.
+- **A note the cursor has not reached carries no verdict.** After a loop
+  restart the first notes came back wearing the previous pass's judgments,
+  green and red, ahead of the playhead. Two sources, one rule. The green was
+  the detector's: `noteStateFor` returns a full-strength hit whenever
+  `age = songT - dispAnchor` is negative, commented "struck a hair early" —
+  which on a gem highway means milliseconds, while a loop wrap moves the clock
+  back by seconds and drops the whole previous pass into that branch. Not a
+  defect for a renderer that never draws what is behind the wrap; a tablature
+  draws a window of notes *ahead* of the cursor and is handed all of it. The
+  red was ours, the verdict memory filling the gap the detector leaves on a
+  miss after the jump. Both are gone now, because a verdict is a statement
+  about something you played.
 - **A verdict is remembered while the note is on screen.** The detector reports
   a miss for 0.6s (`NOTE_MISS_GEM_TTL`) and a hit for the length of its glow,
   which is right for a gem that scrolls away — but a tablature keeps the note

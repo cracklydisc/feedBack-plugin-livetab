@@ -476,3 +476,85 @@ test('the verdict memory is dropped when time runs backwards', () => {
     // A loop point, a seek, a new song: dropped.
     assert.deepEqual([...sandbox.run([10, 2])], [true, false]);
 });
+
+// ─────────────────────────────────────────────────────────────────────────
+// THE FUTURE HAS NO VERDICTS.
+//
+// Obvious, and it was not being enforced: after a loop restart the first notes
+// came back wearing the previous pass's judgments, green and red, ahead of the
+// cursor.
+//
+// Two different sources, one rule closes both. The GREEN was the detector's:
+// `noteStateFor` computes `age = songT - dispAnchor` and returns a
+// full-strength hit when `age < 0`, commented "struck a hair early" — which on
+// a gem highway means a few milliseconds. A loop wrap moves the clock back by
+// eleven seconds, so every note judged in the last pass lands in that branch.
+// That is not a defect for a renderer that never draws what is behind the
+// wrap; a tablature draws a window of notes AHEAD of the cursor and gets the
+// whole previous pass handed to it. The RED was ours: the verdict memory
+// filling the gap the detector leaves on a miss after the jump.
+//
+// So the rule is not "notice the jump" — a race with the clock — but "a note
+// you have not reached carries no verdict", which is true by construction.
+test('a note the cursor has not reached carries no verdict', () => {
+    /*
+     * `verdictFor` PER INTERO, non solo la regola.
+     *
+     * La prima versione di questo test provava `verdictApplies` da sola, e
+     * passava anche togliendo la chiamata da `verdictFor`: una regola giusta
+     * che nessuno consulta. E' lo stesso buco del test della guardia dello
+     * slot, trovato lo stesso giorno rimettendo il difetto — un test che non
+     * cade quando il difetto torna non sta verificando quello che dice.
+     *
+     * Qui corre la catena vera: filtro del futuro, provider, memoria.
+     */
+    const rule = extractFunction(SRC, 'function verdictApplies');
+    const chain = extractFunction(SRC, 'const verdictFor =');
+
+    const build = (live, now, answers) => {
+        const asked = [];
+        const sandbox = {
+            NOW_WINDOW: 0.09, Number, WeakMap,
+            isLive: live, now,
+            provider: (n, t) => { asked.push(t); return answers[t]; },
+            verdictOf: (raw) => (raw ? (raw.state === 'active' ? 'hit' : raw.state) : null),
+        };
+        vm.createContext(sandbox);
+        vm.runInContext(
+            'let verdictSeen = new WeakMap();\n' + rule + '\n' + chain
+            + '\nglobalThis.ask = verdictFor;',
+            sandbox);
+        /* L'array vive nello scope del test, non nel sandbox: una funzione
+           scritta DENTRO il vm non lo vedrebbe. */
+        sandbox.chieste = asked;
+        return sandbox;
+    };
+
+    // The case from the report: the clock wrapped back to 9, and the notes at
+    // 12 and 14 were judged in the pass before. The detector answers a
+    // full-strength hit for one of them — its `age < 0` branch — and nothing
+    // for the missed one, which is the gap the memory used to fill.
+    const wrapped = build(true, 9, { 12: { state: 'hit' }, 14: null });
+    assert.equal(wrapped.ask({ n: {}, t: 12 }), null, 'a hit from the pass before');
+    assert.equal(wrapped.ask({ n: {}, t: 14 }), null, 'a miss from the pass before');
+    assert.deepEqual(wrapped.chieste, [],
+        'the provider is not even asked about a note that has not happened');
+
+    // Behind the cursor the verdict lands...
+    const played = build(true, 20, { 12: { state: 'miss' } });
+    const note = {};
+    assert.equal(played.ask({ n: note, t: 12 }), 'miss');
+    // ...and is remembered once the detector's brief window closes.
+    const quiet = build(true, 20, {});
+    quiet.ask({ n: note, t: 12 });
+    assert.equal(played.ask({ n: note, t: 12 }), 'miss', 'still red while on screen');
+
+    // Under the cursor counts as played: that is the note you are holding.
+    const held = build(true, 12, { 12: { state: 'active' } });
+    assert.equal(held.ask({ n: {}, t: 12 }), 'hit');
+
+    // Not live — a page with no cursor — nothing is "now", so nothing is
+    // filtered and a finished section keeps its colours.
+    const still = build(false, 9, { 12: { state: 'hit' } });
+    assert.equal(still.ask({ n: {}, t: 12 }), 'hit');
+});

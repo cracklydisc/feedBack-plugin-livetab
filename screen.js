@@ -706,6 +706,43 @@ import * as c from './src/kit/controls.js';
         verdictSince = now;
     }
 
+    /**
+     * Se una nota puo' portare un verdetto: solo quando il cursore l'ha
+     * raggiunta.
+     *
+     * SEMBRA OVVIO E NON LO E'. Un verdetto e' un'affermazione su qualcosa che
+     * hai suonato, quindi su una nota che deve ancora arrivare non ne esiste
+     * uno — e invece dopo il riavvio di un loop le prime note tornavano
+     * colorate col giudizio del giro precedente, verdi e rosse davanti al
+     * cursore. Segnalato esattamente cosi'.
+     *
+     * Le due sorgenti erano diverse e questa regola le chiude entrambe.
+     *
+     * IL VERDE veniva dal rilevatore. `noteStateFor` calcola
+     * `age = songT - dispAnchor` e fa `if (age < 0) return { state: 'hit',
+     * alpha: 1 }`, con il commento "struck a hair early": su un'autostrada di
+     * gemme quel ramo vale una nota presa qualche millesimo prima del tempo.
+     * Ma un avvolgimento di loop riporta l'orologio indietro di undici secondi,
+     * e allora OGNI nota giudicata nel giro prima cade in quel ramo e torna
+     * come colpita a piena forza. Per il suo renderer non e' un difetto —
+     * un'autostrada non mostra mai le note dietro il salto — mentre una
+     * tablatura disegna una finestra di note DAVANTI al cursore, e si ritrova
+     * consegnato tutto il giro precedente.
+     *
+     * IL ROSSO era mio: la memoria dei verdetti (vedi sotto) riempiva il buco
+     * che il rilevatore lascia sui miss dopo il salto, e azzerarla quando il
+     * tempo torna indietro non bastava.
+     *
+     * Quindi la regola non e' "accorgiti del salto", che e' una gara con
+     * l'orologio: e' "il futuro non ha verdetti", che e' vero per costruzione
+     * e non dipende dall'accorgersi di niente. `NOW_WINDOW` di tolleranza,
+     * perche' la nota sotto il cursore la stai suonando adesso.
+     */
+    function verdictApplies(live, noteT, now) {
+        if (!live) return true;
+        return !(Number(noteT) > Number(now) + NOW_WINDOW);
+    }
+
     /** Normalise a provider verdict: bare string or { state } -> 'hit'|'miss'|null. */
     function verdictOf(raw) {
         if (!raw) return null;
@@ -2207,6 +2244,7 @@ import * as c from './src/kit/controls.js';
          */
         const verdictFor = (it) => {
             if (it._v !== undefined) return it._v;
+            if (!verdictApplies(isLive, it.t, now)) { it._v = null; return null; }
             let v = null;
             if (provider) {
                 try { v = verdictOf(provider(it.n, it.t)); } catch (_) { v = null; }
