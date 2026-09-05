@@ -4964,5 +4964,11 @@ import * as c from './src/kit/controls.js';
         },
     };
 
-    console.log('[' + ID + '] plugin loaded');
+    /*
+     * Con la versione, per la stessa ragione per cui ce l'ha Riff Repeater: un
+     * log completo senza numero non distingue "la correzione non funziona" da
+     * "l'app non e' stata riavviata", e quella distinzione ci e' gia' costata
+     * un giro intero.
+     */
+    console.log('[' + ID + ' ' + VERSION + '] plugin loaded');
 })();
