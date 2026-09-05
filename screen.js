@@ -568,13 +568,55 @@ import * as c from './src/kit/controls.js';
         good: '61 220 132', bad: '229 72 77', bg: '5 7 12',
     };
 
-    function kitInk(role, alpha) {
-        let triplet = KIT_FALLBACK[role] || KIT_FALLBACK.text;
+    /*
+     * UNA LETTURA PER FRAME PER COLORE — e stavolta davvero.
+     *
+     * Il commento qui sopra lo prometteva gia', ma le chiamate stanno dentro i
+     * cicli PER NOTA: il carattere delle cifre a ogni testa, il colore del
+     * verdetto a ogni giudizio, `dim` a ogni arco, a ogni badge, a ogni
+     * legatura. Con tre staffe e quaranta note visibili sono centinaia di
+     * risoluzioni di stile al frame, ognuna delle quali puo' costringere il
+     * motore a ricalcolare lo stile del documento.
+     *
+     * La cache si svuota all'inizio di ogni `paintTab` e al cambio di tema, che
+     * sono i due soli momenti in cui quei valori possono essere diversi.
+     */
+    const inkCache = new Map();
+    let inkAt = 0;
+
+    function forgetInk() {
+        inkCache.clear();
+        inkAt = (typeof performance !== 'undefined') ? performance.now() : Date.now();
+    }
+
+    /*
+     * Chi legge fuori dal ciclo di disegno — il pannello, quando si costruisce —
+     * non passa da `paintTab`, quindi senza questo si porterebbe dietro i valori
+     * dell'ultimo frame disegnato, che con la vista spenta puo' voler dire
+     * quelli di ieri. Un quarto di secondo e' piu' corto di qualunque gesto
+     * umano e piu' lungo di qualunque frame.
+     */
+    function inkFresh() {
+        const now = (typeof performance !== 'undefined') ? performance.now() : Date.now();
+        if (now - inkAt > 250) forgetInk();
+    }
+
+    function readVar(name) {
         try {
             const v = getComputedStyle(document.documentElement)
-                .getPropertyValue('--fbk-' + role).trim();
-            if (v) triplet = v;
-        } catch (_) { /* no document yet — the fallback is the kit's own value */ }
+                .getPropertyValue(name).trim();
+            return v || null;
+        } catch (_) { return null; }   /* no document yet */
+    }
+
+    function kitInk(role, alpha) {
+        inkFresh();
+        const key = 'i:' + role;
+        let triplet = inkCache.get(key);
+        if (triplet === undefined) {
+            triplet = readVar('--fbk-' + role) || KIT_FALLBACK[role] || KIT_FALLBACK.text;
+            inkCache.set(key, triplet);
+        }
         return (alpha === undefined)
             ? 'rgb(' + triplet + ')'
             : 'rgb(' + triplet + ' / ' + alpha + ')';
@@ -586,14 +628,17 @@ import * as c from './src/kit/controls.js';
      * which is nothing this design system uses.
      */
     function kitFont(role) {
-        const fallback = (role === 'num')
-            ? '"JetBrains Mono", ui-monospace, monospace'
-            : 'Rubik, system-ui, sans-serif';
-        try {
-            const v = getComputedStyle(document.documentElement)
-                .getPropertyValue(role === 'num' ? '--fbk-font-num' : '--fbk-font').trim();
-            return v || fallback;
-        } catch (_) { return fallback; }
+        inkFresh();
+        const key = 'f:' + role;
+        let face = inkCache.get(key);
+        if (face === undefined) {
+            const fallback = (role === 'num')
+                ? '"JetBrains Mono", ui-monospace, monospace'
+                : 'Rubik, system-ui, sans-serif';
+            face = readVar(role === 'num' ? '--fbk-font-num' : '--fbk-font') || fallback;
+            inkCache.set(key, face);
+        }
+        return face;
     }
 
     const MONO_NOTE = () => kitInk('text');
@@ -785,14 +830,39 @@ import * as c from './src/kit/controls.js';
         return null;
     }
 
+    /*
+     * Le note di un accordo, appiattite — e SEMPRE GLI STESSI OGGETTI.
+     *
+     * La memoria dei verdetti e' una `WeakMap` sulla nota: se la nota e' un
+     * oggetto nuovo a ogni frame la memoria non trova mai niente, e l'accordo
+     * sbagliato tornava grigio dopo i 0,6 secondi di vita del verdetto invece
+     * di restare rosso finche' esce dalla finestra — cioe' esattamente il
+     * difetto che quella memoria era stata scritta per togliere. Le note
+     * singole non ne soffrivano perche' arrivano dall'ospite e la loro identita'
+     * regge tutto il brano.
+     *
+     * La cache e' sull'accordo (`WeakMap`, quindi se ne va con lui) e porta con
+     * se' il template da cui e' nata: cambiare difficolta' rimappa le forme, e
+     * una versione appiattita vecchia disegnerebbe la diteggiatura sbagliata.
+     */
+    const chordNoteCache = new WeakMap();
+
     /** Flatten a chord into note-shaped entries sharing the chord's time. */
     function chordNotes(chord, templates) {
         if (!chord) return [];
+        const tplNow = (Array.isArray(templates) && chord.id != null) ? templates[chord.id] : null;
+        const hit = chordNoteCache.get(chord);
+        if (hit && hit.tpl === tplNow) return hit.out;
+        const out = build(chord, templates, tplNow);
+        chordNoteCache.set(chord, { tpl: tplNow, out });
+        return out;
+    }
+
+    function build(chord, templates, tplNow) {
         if (Array.isArray(chord.notes) && chord.notes.length) {
             return chord.notes.map((cn) => Object.assign({}, cn, { t: chord.t }));
         }
-        const tpl = (Array.isArray(templates) && chord.id != null) ? templates[chord.id] : null;
-        const frets = tpl && Array.isArray(tpl.frets) ? tpl.frets : null;
+        const frets = tplNow && Array.isArray(tplNow.frets) ? tplNow.frets : null;
         if (!frets) return [];
         const out = [];
         for (let s = 0; s < frets.length; s++) {
@@ -1822,6 +1892,9 @@ import * as c from './src/kit/controls.js';
      * serve both reading modes. A staff is "live" when the cursor is inside
      * it — only that one gets a playhead, a halo and a faded spent region.
      */
+    /** Alzata quando una staffa ha il proprio ritaglio attivo. Vedi `drawStaff`. */
+    let staffClipped = false;
+
     function drawStaff(chart, band, view) {
         const { colors, count, lines, rowOffset, templates, items, provider,
             now, map, k, w, tuning } = chart;
@@ -1858,6 +1931,22 @@ import * as c from './src/kit/controls.js';
         ctx.beginPath();
         ctx.rect(clipLeft, band.top, Math.max(1, w - clipLeft), band.height);
         ctx.clip();
+        /*
+         * Da qui in poi il contesto ha UNO stato in piu' sullo stack, e un
+         * ritaglio che vale solo per questa staffa.
+         *
+         * Se il corpo lancia, `paintTab` prende l'eccezione e passa alla staffa
+         * seguente — ma il ritaglio resta appeso, e la staffa dopo ritaglia
+         * DENTRO quello: due bande che non si toccano si intersecano nel vuoto,
+         * e le staffe 2 e 3 escono nere. Il commento la' sopra promette che il
+         * guasto di una staffa non porta via la pagina; senza questa bandiera la
+         * promessa vale solo per un'eccezione lanciata nelle prime tre righe.
+         *
+         * Una bandiera e non un `try/finally`: il corpo e' millequattrocento
+         * righe, e rientrarle tutte per un blocco renderebbe illeggibile ogni
+         * `git blame` futuro su questo file.
+         */
+        staffClipped = true;
 
         // Scrolling reads a little past both edges so notes slide in and out
         // instead of appearing; a page reads exactly its own bars.
@@ -2372,6 +2461,16 @@ import * as c from './src/kit/controls.js';
                 ctx.fillStyle = 'rgba(255,255,255,0.38)';
                 ctx.fillText(label, x, laneSect);
             }
+            /*
+             * E si rimette a zero. `letterSpacing` non e' un colore che il
+             * prossimo `fillText` sovrascrive: resta sul contesto, e da qui in
+             * giu' ce l'avrebbero le cifre dei tasti, la carta accordo, i
+             * bending e le lyrics — tracciati di due pixel su testi che non
+             * sono etichette. Si notava solo confrontando una canzone con le
+             * sezioni accese e una senza, che e' il modo peggiore di scoprire
+             * un difetto.
+             */
+            ctx.letterSpacing = '0px';
         }
 
         // ── Strings ──────────────────────────────────────────────────
@@ -3280,6 +3379,7 @@ import * as c from './src/kit/controls.js';
             ctx.restore();
         }
 
+        staffClipped = false;
         ctx.restore();
 
         // ── String names ─────────────────────────────────────────────
@@ -3303,6 +3403,7 @@ import * as c from './src/kit/controls.js';
 
     /** Paints the tab into the current `ctx` for a w×h box. */
     function paintTab(w, h) {
+        forgetInk();
         ctx.clearRect(0, 0, w, h);
         // With no board behind us the backdrop must be solid, otherwise the
         // host canvas ghosts through the translucency.
@@ -3412,6 +3513,9 @@ import * as c from './src/kit/controls.js';
             try {
                 drawStaff(chart, band, view);
             } catch (err) {
+                // Il ritaglio della staffa che ha lanciato non deve restare
+                // addosso a quelle dopo.
+                if (staffClipped) { staffClipped = false; ctx.restore(); }
                 if (!drawFailed) {
                     drawFailed = true;
                     console.error('[' + ID + '] drawStaff threw — the rest of the page still drew:', err);
@@ -3629,8 +3733,22 @@ import * as c from './src/kit/controls.js';
                 boardCanvas.style.right = 'auto';
                 boardCanvas.style.width = bw + 'px';
                 boardCanvas.style.height = Math.round(sl.boardH) + 'px';
-                boardCanvas.width = Math.max(1, bw);
-                boardCanvas.height = Math.max(1, Math.round(sl.boardH));
+                /*
+                 * Solo se cambia davvero. Scrivere `width` su un canvas azzera
+                 * e rialloca il buffer di disegno anche quando il valore e'
+                 * identico, e questo gira a ogni frame: sessanta riallocazioni
+                 * al secondo per niente, e — se la board e' quella 3D, che
+                 * dimensiona il proprio buffer moltiplicando per il DPR — la
+                 * scena tornava alla dimensione sbagliata a ogni giro. Il
+                 * canvas della tab, due righe piu' sotto, la guardia ce l'ha
+                 * sempre avuta.
+                 */
+                const bwPx = Math.max(1, bw);
+                const bhPx = Math.max(1, Math.round(sl.boardH));
+                if (boardCanvas.width !== bwPx || boardCanvas.height !== bhPx) {
+                    boardCanvas.width = bwPx;
+                    boardCanvas.height = bhPx;
+                }
             }
             tabCanvas.style.top = Math.round(sl.boardH) + 'px';
             tabCanvas.style.height = Math.round(sl.tabH) + 'px';
@@ -4815,6 +4933,24 @@ import * as c from './src/kit/controls.js';
         }, 500);
         onTeardown(() => clearInterval(timer));
     }
+
+    /*
+     * E IL PANNELLO SI STACCA.
+     *
+     * `attach()` del kit avvia un battito che non si ferma da solo — rimette il
+     * proprio pulsante nello slot se sparisce — piu' due ascoltatori in cattura
+     * su `document`; `detach()` e' cio' che li toglie. Senza, ogni
+     * aggiornamento o ripristino del plugin lasciava dietro il pannello
+     * precedente: due pulsanti "Tab view" nella rastrelliera, il vecchio
+     * battito che rimette il suo ogni due secondi, Escape gestito due volte, e
+     * il vecchio contenitore ancora nel `body`. L'ospite rivaluta lo script a
+     * ogni aggiornamento, quindi non e' un caso di laboratorio: e' quello che
+     * succede a chi aggiorna il plugin senza riavviare.
+     */
+    onTeardown(() => {
+        try { if (panel && typeof panel.detach === 'function') panel.detach(); }
+        catch (_) { /* se ne va comunque */ }
+    });
 
     onTeardown(() => { panels.clear(); });
 
