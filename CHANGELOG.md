@@ -8,7 +8,7 @@ and it follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 Versions before 0.26.1 were never published; the history starts at the first
 public alpha.
 
-## [0.29.0] — 2026-09-03
+## [0.29.0] — 2026-09-05
 
 One release, not ten. The version in `plugin.json` moved from 0.29.0 to 0.38.0
 during development — those numbers were working markers between commits on an
@@ -77,9 +77,13 @@ nine versions nobody could install. The release after 0.28.0 is this one.
   `getLoop()` reports that earlier point — so the tab showed the loop starting
   at bar 42 when you had asked for 45, greens and reds inside it, and the
   Repeater's counter looked wrong for starting where it does. The judged window
-  comes from `getConductorState().range`, and it now gets a second wash and a
-  dashed line on its first edge: the run-in stays inside the loop, because you
-  need to hear it, but it reads as approach rather than as the passage. Notes
+  comes from `getConductorState().range`, and it is the only part that wears
+  the green. The run-in gets a neutral ground and a diagonal hatch instead —
+  the way "inside the zone, not available" has been said since long before
+  screens — because two nearby greens are not two categories, they are one
+  colour under two lights, and on screen they merged. It stays inside the loop,
+  because you need to hear it, but it reads as approach rather than as the
+  passage. Notes
   in it carry no verdict either — the detector judges them, nothing counts
   them, and red on an uncounted note is a lie about your own score.
 - **The panel stops closing when you pause** (kit): the transport and the
@@ -223,8 +227,42 @@ nine versions nobody could install. The release after 0.28.0 is this one.
   fades, and a small letter in a large disc reads as a letter set wrong. At 52%
   it becomes the disc's content. The plate is opaque too: the slur's arc
   arrives tangent to the bottom edge and at 92% showed through.
-- Page view no longer loses the staves below the first when one of them throws,
-  and a fault is reported once rather than sixty times a second.
+- **Page view no longer loses the staves below the first when one of them
+  throws.** A fault is reported once rather than sixty times a second — and the
+  staff that threw no longer takes the others with it. Each staff opens a clip
+  for its own band and closes it 1400 lines later; a throw in between left the
+  clip on, so the next staff clipped inside the previous band, two rectangles
+  that do not touch intersected to nothing, and staves 2 and 3 came out black.
+  The promise in that comment now holds for a throw anywhere in the body, not
+  only in its first three lines.
+- **The panel is detached when the plugin comes down.** `attach()` starts a
+  heartbeat that never stops by itself and two capture listeners on the
+  document; `detach()` is what removes them, and it was never called. The host
+  re-evaluates a plugin's script on every update, so one update left two "Tab
+  view" buttons in the rail, the old heartbeat putting its own back every two
+  seconds, and Escape handled twice.
+- **The board canvas is no longer reallocated sixty times a second.** Its
+  `width` was assigned every frame with no `!==` guard — the guard the tab
+  canvas two lines below has always had. Assigning `width` reallocates the
+  drawing buffer even for an identical value, and a 3D board, which sizes its
+  own buffer by device pixel ratio, was pulled back to the wrong size every
+  frame.
+- **Letter spacing no longer leaks down the staff.** Set for the section
+  eyebrow and never reset, it was inherited by every fret number, chord card,
+  bend and lyric drawn after it in the same staff. Visible only by comparing a
+  song with sections against one without, which is the worst way to find a
+  defect.
+- **A chord's verdict is remembered like a single note's.** The flattened chord
+  notes were rebuilt every frame, and the verdict memo is keyed on the note
+  object — so for chords it never hit, and a fluffed chord went back to grey
+  after the detector's 0.6s TTL instead of staying red. Exactly the defect that
+  memo was written to remove.
+- **The theme is read once per frame, for real.** The comment promised it; the
+  calls sat inside the per-note loops, which on three staves is hundreds of
+  style resolutions a frame.
+- The plugin's load line carries its version, because a complete console log
+  without one cannot tell "the fix does not work" from "the app was not
+  restarted".
 
 ## [0.28.0] — 2026-09-01
 

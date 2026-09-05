@@ -139,6 +139,26 @@ places.
 
 ---
 
+## The look comes from a kit
+
+The panel in the player and the whole settings screen are drawn with the
+[fee[dB]ack plugin kit](https://github.com/cracklydisc/feedBack-plugin-kit) — a
+small design system with its own tests and its own
+[DESIGN.md](https://github.com/cracklydisc/feedBack-plugin-kit/blob/main/DESIGN.md),
+where every control is chosen by the shape of the value it edits rather than
+picked by hand.
+
+The kit is **vendored, not imported**: copied into `src/kit/` and
+`assets/kit.css` rather than fetched from another plugin at runtime, because
+any plugin can be disabled and there is no load order to rely on.
+
+[Riff Repeater](https://github.com/cracklydisc/feedBack-plugin-riffrepeater)
+draws from the same kit, which is why the two plugins look like one object
+rather than two things that resemble each other — and why a drill armed there
+shows up here as a loop you can read.
+
+---
+
 ## Reporting a problem
 
 Settings → Graphics → **Live Tab** → **Copy diagnostics**, then paste. It
