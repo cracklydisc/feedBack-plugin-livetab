@@ -610,6 +610,30 @@ import * as c from './src/kit/controls.js';
     const COL_LOOP_FILL = 'rgba(74,222,128,0.10)';
 
     /*
+     * IL VERDE E' DELLA PARTE DA SUONARE, E DI NESSUN'ALTRA.
+     *
+     * Prima la rincorsa del drill — i cinque secondi che il loop apre prima
+     * delle battute scelte, perche' tu non ci entri di corsa — aveva lo stesso
+     * verde della parte giudicata, solo piu' pallido: un velo al 10% contro due
+     * al 10%. Due verdi vicini non sono due categorie, sono lo stesso colore
+     * con due luci: a schermo si confondevano, e la rincorsa continuava a dire
+     * "questa e' roba tua".
+     *
+     * Adesso la rincorsa non e' verde affatto. Fondo neutro piu' una tratteggia-
+     * tura diagonale, che e' la convenzione con cui si dice "zona, ma non
+     * agibile" da prima dei monitor. Il verde resta uno solo, piu' deciso di
+     * com'era, e vuol dire una cosa sola: qui si suona.
+     *
+     * La tratteggiatura, e non un semplice grigio piu' scuro: sul nero di
+     * sfondo un velo neutro leggero e' quasi invisibile, e uno pesante spegne
+     * le note che ci stanno sopra — e quelle note vanno lette lo stesso, sono
+     * il contesto da cui il pezzo esce. Le righe si vedono senza coprire.
+     */
+    const COL_JUDGED_FILL = 'rgba(74,222,128,0.20)';
+    const COL_RUNIN_FILL = () => kitInk('dim', 0.10);
+    const COL_RUNIN_HATCH = () => kitInk('dim', 0.22);
+
+    /*
      * Le note che in questo passaggio non tocca suonare: grigie, non colorate.
      *
      * `dim` e non un grigio inventato, cosi' seguono il tema come tutto il
@@ -2170,33 +2194,54 @@ import * as c from './src/kit/controls.js';
             const x0 = Math.max(clipLeft, lx0);
             const x1 = Math.min(w, lx1);
             if (x1 > x0) {
-                ctx.fillStyle = COL_LOOP_FILL;
-                ctx.fillRect(x0, staffTop - 6 * k, x1 - x0,
-                    (staffBottom - staffTop) + 12 * k);
+                const bandTop = staffTop - 6 * k;
+                const bandH = (staffBottom - staffTop) + 12 * k;
 
                 /*
                  * LA RINCORSA NON E' LA PARTE CHE CONTA, e si vede.
                  *
                  * Un drill apre il loop cinque secondi prima delle battute
-                 * chieste, cosi' non ci entri di corsa. Ma la banda del loop
-                 * copriva tutto allo stesso modo, quindi la tab diceva "il
-                 * pezzo e' questo" indicando tre battute in piu' di quelle
-                 * scelte — e il contatore, che parte dalla battuta giusta,
-                 * sembrava sbagliato.
+                 * chieste, cosi' non ci entri di corsa. Ma la banda copriva
+                 * tutto allo stesso modo, quindi la tab diceva "il pezzo e'
+                 * questo" indicando tre battute in piu' di quelle scelte — e il
+                 * contatore, che parte dalla battuta giusta, sembrava sbagliato.
                  *
-                 * Un secondo velo sulla sola parte giudicata e una riga sul
-                 * confine: la rincorsa resta dentro il loop (la senti, e devi
-                 * sentirla) ma si legge come avvicinamento, e il punto da cui
-                 * si conta e' un posto preciso invece di un'informazione che
-                 * hai solo nel pannello.
+                 * Senza una finestra giudicata non c'e' rincorsa da separare:
+                 * un loop semplice e' tutto da suonare, e prende il verde
+                 * intero.
                  */
+                const hatch = (hx0, hx1) => {
+                    if (!(hx1 > hx0)) return;
+                    ctx.save();
+                    ctx.beginPath();
+                    ctx.rect(hx0, bandTop, hx1 - hx0, bandH);
+                    ctx.clip();
+                    ctx.strokeStyle = COL_RUNIN_HATCH();
+                    ctx.lineWidth = Math.max(1, 1.1 * k);
+                    ctx.beginPath();
+                    const step = 13 * k;
+                    for (let x = hx0 - bandH; x < hx1 + bandH; x += step) {
+                        ctx.moveTo(x, bandTop + bandH);
+                        ctx.lineTo(x + bandH, bandTop);
+                    }
+                    ctx.stroke();
+                    ctx.restore();
+                };
+
                 if (judged) {
                     const jx0 = Math.max(x0, xAt(judged.from));
                     const jx1 = Math.min(x1, xAt(judged.to));
+                    // Prima il fondo neutro su tutto il loop, poi il verde
+                    // sopra la sola parte giudicata: cosi' la rincorsa resta
+                    // dentro la banda — la senti e devi sentirla — senza
+                    // portarne il colore.
+                    ctx.fillStyle = COL_RUNIN_FILL();
+                    ctx.fillRect(x0, bandTop, x1 - x0, bandH);
+                    hatch(x0, Math.min(jx0, x1));
+                    hatch(Math.max(jx1, x0), x1);
                     if (jx1 > jx0) {
-                        ctx.fillStyle = COL_LOOP_FILL;
-                        ctx.fillRect(jx0, staffTop - 6 * k, jx1 - jx0,
-                            (staffBottom - staffTop) + 12 * k);
+                        ctx.fillStyle = COL_JUDGED_FILL;
+                        ctx.fillRect(jx0, bandTop, jx1 - jx0, bandH);
                     }
                     const jx = xAt(judged.from);
                     if (jx > clipLeft && jx < w) {
@@ -2210,6 +2255,9 @@ import * as c from './src/kit/controls.js';
                         ctx.stroke();
                         ctx.restore();
                     }
+                } else {
+                    ctx.fillStyle = COL_LOOP_FILL;
+                    ctx.fillRect(x0, bandTop, x1 - x0, bandH);
                 }
                 // Repeat signs, not just uprights. A tinted band is easy to
                 // miss against a dark staff and says nothing about which way
